@@ -1,0 +1,92 @@
+package org.geotools.data.mongodb.complex.schemaless;
+
+import org.geotools.data.Query;
+import org.geotools.feature.FeatureCollection;
+import org.geotools.feature.FeatureIterator;
+import org.geotools.geometry.jts.ReferencedEnvelope;
+import org.opengis.feature.Feature;
+import org.opengis.feature.FeatureVisitor;
+import org.opengis.feature.type.FeatureType;
+import org.opengis.filter.Filter;
+import org.opengis.filter.sort.SortBy;
+import org.opengis.util.ProgressListener;
+
+import java.io.IOException;
+import java.util.Collection;
+
+public class SchemalessFeatureCollection implements FeatureCollection<FeatureType, Feature> {
+
+    protected SchemalessFeatureSource featureSource;
+
+    protected Query query;
+
+    public SchemalessFeatureCollection (Query q, SchemalessFeatureSource source){
+        this.query=q;
+        this.featureSource=source;
+    }
+
+    @Override
+    public FeatureIterator<Feature> features() {
+        return new SchemalessFeatureIterator();
+    }
+
+    @Override
+    public FeatureType getSchema() {
+        return featureSource.getSchema();
+    }
+
+    @Override
+    public String getID() {
+        return null;
+    }
+
+    @Override
+    public void accepts(FeatureVisitor visitor, ProgressListener progress) throws IOException {
+
+    }
+
+    @Override
+    public FeatureCollection<FeatureType, Feature> subCollection(Filter filter) {
+        return null;
+    }
+
+    @Override
+    public FeatureCollection<FeatureType, Feature> sort(SortBy order) {
+        return null;
+    }
+
+    @Override
+    public ReferencedEnvelope getBounds() {
+        return ReferencedEnvelope.create(getSchema().getCoordinateReferenceSystem());
+    }
+
+    @Override
+    public boolean contains(Object o) {
+        return false;
+    }
+
+    @Override
+    public boolean containsAll(Collection<?> o) {
+        return false;
+    }
+
+    @Override
+    public boolean isEmpty() {
+        return false;
+    }
+
+    @Override
+    public int size() {
+        return 0;
+    }
+
+    @Override
+    public Object[] toArray() {
+        return new Object[0];
+    }
+
+    @Override
+    public <O> O[] toArray(O[] a) {
+        return null;
+    }
+}
