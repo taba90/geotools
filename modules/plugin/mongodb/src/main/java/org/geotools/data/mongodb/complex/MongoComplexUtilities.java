@@ -219,7 +219,7 @@ public final class MongoComplexUtilities {
     /**
      * Helper method that checks if a mongodb value is a geometry and perform the proper conversion.
      */
-    private static Object convertGeometry(
+    public static Object convertGeometry(
             Object value, Supplier<GeometryCoordinateSequenceTransformer> transformer) {
         if (!(value instanceof DBObject) || value instanceof List) {
             // not a mongodb object or a list of values so nothing to do

@@ -37,8 +37,8 @@ import org.geotools.filter.FilterAttributeExtractor;
 import org.geotools.util.Converters;
 import org.locationtech.jts.geom.Envelope;
 import org.locationtech.jts.geom.Geometry;
-import org.opengis.feature.simple.SimpleFeatureType;
 import org.opengis.feature.type.AttributeDescriptor;
+import org.opengis.feature.type.FeatureType;
 import org.opengis.feature.type.PropertyDescriptor;
 import org.opengis.filter.And;
 import org.opengis.filter.BinaryComparisonOperator;
@@ -111,7 +111,7 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
     final MongoGeometryBuilder geometryBuilder;
 
     /** The schmema the encoder will use as reference to drive filter encoding */
-    SimpleFeatureType featureType;
+    FeatureType featureType;
 
     public FilterToMongo(CollectionMapper mapper) {
         this(mapper, new MongoGeometryBuilder());
@@ -135,7 +135,7 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
      * <p>The type of the attributes may drive how the filter is translated to a mongodb query
      * document.
      */
-    public void setFeatureType(SimpleFeatureType featureType) {
+    public void setFeatureType(FeatureType featureType) {
         this.featureType = featureType;
     }
 
