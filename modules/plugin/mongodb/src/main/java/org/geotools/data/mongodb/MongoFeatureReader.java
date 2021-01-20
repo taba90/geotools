@@ -29,7 +29,7 @@ public class MongoFeatureReader implements SimpleFeatureReader {
 
     DBCursor cursor;
     MongoFeatureSource featureSource;
-    CollectionMapper mapper;
+    SimpleCollectionMapper mapper;
 
     public MongoFeatureReader(DBCursor cursor, MongoFeatureSource featureSource) {
         this.cursor = cursor;

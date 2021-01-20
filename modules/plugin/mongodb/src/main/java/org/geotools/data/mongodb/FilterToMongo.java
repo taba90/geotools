@@ -25,10 +25,7 @@ import com.mongodb.BasicDBObjectBuilder;
 import com.mongodb.DBObject;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.regex.Pattern;
 import org.bson.types.ObjectId;
 import org.geotools.data.mongodb.complex.JsonSelectAllFunction;
@@ -37,6 +34,7 @@ import org.geotools.filter.FilterAttributeExtractor;
 import org.geotools.util.Converters;
 import org.locationtech.jts.geom.Envelope;
 import org.locationtech.jts.geom.Geometry;
+import org.opengis.feature.Feature;
 import org.opengis.feature.type.AttributeDescriptor;
 import org.opengis.feature.type.FeatureType;
 import org.opengis.feature.type.PropertyDescriptor;
@@ -106,12 +104,14 @@ import org.opengis.filter.temporal.TOverlaps;
  */
 public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
 
-    final CollectionMapper mapper;
+    final CollectionMapper<FeatureType, Feature> mapper;
 
     final MongoGeometryBuilder geometryBuilder;
 
     /** The schmema the encoder will use as reference to drive filter encoding */
     FeatureType featureType;
+
+    private Map<String, Class<?>> propertyTypesMap;
 
     public FilterToMongo(CollectionMapper mapper) {
         this(mapper, new MongoGeometryBuilder());
@@ -156,9 +156,10 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
     public Object visit(PropertyName expression, Object extraData) {
         String prop = expression.getPropertyName();
         if (extraData == Geometry.class) {
-            return mapper.getGeometryPath();
+            if (mapper != null) return mapper.getGeometryPath();
+            else return "geometry";
         }
-        return mapper.getPropertyPath(prop);
+        return getPropertyPath(prop);
     }
 
     @Override
@@ -239,7 +240,7 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
         BasicDBObject expr = (BasicDBObject) filter.getFilter().accept(this, null);
         BasicDBObject dbObject;
         if (pn != null) {
-            String strPn = mapper.getPropertyPath(pn.getPropertyName());
+            String strPn = getPropertyPath(pn.getPropertyName());
             // get only the operator expression
             Object exprValue = expr.get(strPn);
             dbObject = new BasicDBObject("$not", exprValue);
@@ -320,11 +321,14 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
             return valueType;
         }
 
-        if (e instanceof PropertyName && featureType != null) {
+        if (e instanceof PropertyName) {
             // we should get the value type from the correspondent attribute descriptor
-            AttributeDescriptor attType = (AttributeDescriptor) e.evaluate(featureType);
-            if (attType != null) {
-                valueType = attType.getType().getBinding();
+            Object attType = e.evaluate(featureType);
+            if (attType != null && attType instanceof AttributeDescriptor) {
+                valueType = ((AttributeDescriptor) attType).getType().getBinding();
+            } else if (propertyTypesMap != null) {
+                String convertedPn = getPropertyPath(((PropertyName) e).getPropertyName());
+                valueType = propertyTypesMap.get(convertedPn);
             }
         } else if (e instanceof Function) {
             // get the value type from the function return type
@@ -757,5 +761,36 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
                         .push("properties")
                         .add("name", "urn:x-mongodb:crs:strictwinding:EPSG:4326")
                         .get());
+    }
+
+    private String getPropertyPath(String propertyName) {
+        if (mapper != null) {
+            return mapper.getPropertyPath(propertyName);
+        } else {
+            String[] splittedPn = propertyName.split("/");
+            StringBuilder sb = new StringBuilder("");
+            for (int i = 0; i < splittedPn.length; i++) {
+                String xpathStep = splittedPn[i];
+                if (xpathStep.indexOf(":") != -1) xpathStep = xpathStep.split(":")[1];
+                int index = xpathStep.indexOf("Index");
+                if (index != -1) {
+                    xpathStep = xpathStep.substring(0, index);
+                }
+                sb.append(xpathStep);
+                if (i != splittedPn.length - 1) sb.append(".");
+            }
+            return sb.toString();
+        }
+    }
+
+    private Class<?> getType(String type) {
+        if (type.equalsIgnoreCase("NUMBER")) return Number.class;
+        else if (type.equalsIgnoreCase("INTEGER")) return Integer.class;
+        else if (type.equalsIgnoreCase("DATE")) return Date.class;
+        else return null;
+    }
+
+    public void setPropertyTypesMap(Map<String, Class<?>> propertyTypesMap) {
+        this.propertyTypesMap = propertyTypesMap;
     }
 }

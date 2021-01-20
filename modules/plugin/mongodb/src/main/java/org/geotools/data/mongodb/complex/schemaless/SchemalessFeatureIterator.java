@@ -9,8 +9,8 @@ public class SchemalessFeatureIterator implements FeatureIterator<Feature> {
 
     private SchemalessFeatureReader featureReader;
 
-    public SchemalessFeatureIterator (SchemalessFeatureReader reader){
-        this.featureReader=reader;
+    public SchemalessFeatureIterator(SchemalessFeatureReader reader) {
+        this.featureReader = reader;
     }
 
     @Override

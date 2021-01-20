@@ -283,7 +283,6 @@ public class AppSchemaDataAccessConfigurator {
             }
         }
     }
-
     /** Ensure any source data stores not used in a mapping are disposed. */
     private void disposeUnusedSourceDataStores(
             Map<String, DataAccess<FeatureType, Feature>> sourceDataStores,

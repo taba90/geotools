@@ -34,6 +34,7 @@ import org.geotools.data.QueryCapabilities;
 import org.geotools.data.ReTypeFeatureReader;
 import org.geotools.data.mongodb.complex.JsonSelectAllFunction;
 import org.geotools.data.mongodb.complex.JsonSelectFunction;
+import org.geotools.data.mongodb.complex.schemaless.MongoDataTypesFinder;
 import org.geotools.data.store.ContentEntry;
 import org.geotools.data.store.ContentFeatureSource;
 import org.geotools.feature.simple.SimpleFeatureTypeBuilder;
@@ -62,7 +63,7 @@ public class MongoFeatureSource extends ContentFeatureSource {
 
     final DBCollection collection;
 
-    CollectionMapper mapper;
+    SimpleCollectionMapper mapper;
 
     public MongoFeatureSource(ContentEntry entry, Query query, DBCollection collection) {
         super(entry, query);
@@ -84,11 +85,11 @@ public class MongoFeatureSource extends ContentFeatureSource {
         return collection;
     }
 
-    public CollectionMapper getMapper() {
+    public SimpleCollectionMapper getMapper() {
         return mapper;
     }
 
-    public void setMapper(CollectionMapper mapper) {
+    public void setMapper(SimpleCollectionMapper mapper) {
         this.mapper = mapper;
     }
 
@@ -322,6 +323,7 @@ public class MongoFeatureSource extends ContentFeatureSource {
         }
 
         FilterToMongo v = new FilterToMongo(mapper);
+        v.setPropertyTypesMap(new MongoDataTypesFinder(collection).findPropertiesTypes(f));
         v.setFeatureType(getSchema());
 
         return (DBObject) f.accept(v, null);

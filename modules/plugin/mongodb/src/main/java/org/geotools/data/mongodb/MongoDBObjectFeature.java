@@ -47,12 +47,12 @@ public class MongoDBObjectFeature implements SimpleFeature {
 
     private final SimpleFeatureType featureType;
     private final DBObject featureDBO;
-    private final CollectionMapper mapper;
+    private final SimpleCollectionMapper mapper;
 
     private Map<Object, Object> userData;
 
     public MongoDBObjectFeature(
-            DBObject dbo, SimpleFeatureType featureType, CollectionMapper mapper) {
+            DBObject dbo, SimpleFeatureType featureType, SimpleCollectionMapper mapper) {
         this.featureDBO = dbo;
         this.featureType = featureType;
         this.mapper = mapper;

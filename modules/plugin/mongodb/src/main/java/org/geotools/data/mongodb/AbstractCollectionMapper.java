@@ -30,7 +30,7 @@ import org.opengis.feature.type.AttributeDescriptor;
  *
  * @author tkunicki@boundlessgeo.com
  */
-public abstract class AbstractCollectionMapper implements CollectionMapper {
+public abstract class AbstractCollectionMapper implements SimpleCollectionMapper {
 
     public static final String MONGO_OBJECT_FEATURE_KEY = "MONGO_OBJECT_FEATURE";
 

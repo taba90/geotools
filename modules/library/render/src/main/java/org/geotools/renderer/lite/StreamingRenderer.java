@@ -79,6 +79,7 @@ import org.geotools.feature.FeatureCollection;
 import org.geotools.feature.FeatureIterator;
 import org.geotools.feature.FeatureTypes;
 import org.geotools.feature.SchemaException;
+import org.geotools.feature.type.Types;
 import org.geotools.filter.IllegalFilterException;
 import org.geotools.filter.function.EnvFunction;
 import org.geotools.filter.function.GeometryTransformationVisitor;
@@ -2356,7 +2357,10 @@ public class StreamingRenderer implements GTRenderer {
             } else {
                 mixed.setSortBy(definitionQuery.getSortBy());
             }
-            checkAttributeExistence(featureSource.getSchema(), mixed);
+            FeatureType ft = featureSource.getSchema();
+            Object skipValidation = ft.getUserData().get(Types.SKIP_STYLE_VALIDATION);
+            if (skipValidation != null && !((Boolean) skipValidation).booleanValue())
+                checkAttributeExistence(featureSource.getSchema(), mixed);
             features = featureSource.getFeatures(mixed);
             features = RendererUtilities.fixFeatureCollectionReferencing(features, sourceCrs);
         }

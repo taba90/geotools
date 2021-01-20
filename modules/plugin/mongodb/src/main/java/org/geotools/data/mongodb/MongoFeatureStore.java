@@ -44,11 +44,11 @@ public class MongoFeatureStore extends ContentFeatureStore {
         return (MongoDataStore) super.getDataStore();
     }
 
-    public CollectionMapper getMapper() {
+    public SimpleCollectionMapper getMapper() {
         return delegate.getMapper();
     }
 
-    public void setMapper(CollectionMapper mapper) {
+    public void setMapper(SimpleCollectionMapper mapper) {
         delegate.setMapper(mapper);
     }
 

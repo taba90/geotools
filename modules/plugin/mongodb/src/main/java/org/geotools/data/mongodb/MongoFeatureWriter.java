@@ -29,7 +29,7 @@ public class MongoFeatureWriter implements SimpleFeatureWriter {
     private final DBCollection collection;
     private final SimpleFeatureType featureType;
 
-    private final CollectionMapper mapper;
+    private final SimpleCollectionMapper mapper;
     private MongoDBObjectFeature current;
 
     public MongoFeatureWriter(

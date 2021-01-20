@@ -59,6 +59,8 @@ public class Types {
      */
     public static final String DECLARED_NAMESPACES_MAP = "declaredNamespacesMap";
 
+    public static final String SKIP_STYLE_VALIDATION = "SKIP_STYLE_VALIDATION";
+
     /**
      * Ensures an attribute value is withing the restrictions of the AttributeDescriptor and
      * AttributeType.

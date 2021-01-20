@@ -1,35 +1,13 @@
-/*
- *    GeoTools - The Open Source Java GIS Toolkit
- *    http://geotools.org
- *
- *    (C) 2015, Open Source Geospatial Foundation (OSGeo)
- *    (C) 2014-2015, Boundless
- *
- *    This library is free software; you can redistribute it and/or
- *    modify it under the terms of the GNU Lesser General Public
- *    License as published by the Free Software Foundation;
- *    version 2.1 of the License.
- *
- *    This library is distributed in the hope that it will be useful,
- *    but WITHOUT ANY WARRANTY; without even the implied warranty of
- *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- *    Lesser General Public License for more details.
- */
 package org.geotools.data.mongodb;
 
 import com.mongodb.DBCollection;
 import com.mongodb.DBObject;
 import org.locationtech.jts.geom.Geometry;
-import org.opengis.feature.simple.SimpleFeature;
-import org.opengis.feature.simple.SimpleFeatureType;
+import org.opengis.feature.Feature;
+import org.opengis.feature.type.FeatureType;
 import org.opengis.feature.type.Name;
 
-/**
- * A strategy for mapping a mongo collection to a feature.
- *
- * @author Justin Deoliveira, OpenGeo
- */
-public interface CollectionMapper {
+public interface CollectionMapper<T extends FeatureType, F extends Feature> {
 
     Geometry getGeometry(DBObject obj);
 
@@ -41,7 +19,7 @@ public interface CollectionMapper {
 
     String getPropertyPath(String property);
 
-    SimpleFeatureType buildFeatureType(Name name, DBCollection collection);
+    T buildFeatureType(Name name, DBCollection collection);
 
-    SimpleFeature buildFeature(DBObject obj, SimpleFeatureType featureType);
+    F buildFeature(DBObject obj, T featureType);
 }

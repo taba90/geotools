@@ -1,5 +1,6 @@
 package org.geotools.data.mongodb.complex.schemaless;
 
+import java.util.*;
 import org.geotools.data.complex.feature.type.ComplexFeatureTypeImpl;
 import org.geotools.feature.NameImpl;
 import org.opengis.feature.type.AttributeType;
@@ -9,9 +10,7 @@ import org.opengis.feature.type.PropertyDescriptor;
 import org.opengis.filter.Filter;
 import org.opengis.util.InternationalString;
 
-import java.util.*;
-
-public class ModifiableComplexFeatureType extends ComplexFeatureTypeImpl implements ModifiableType{
+public class ModifiableComplexFeatureType extends ComplexFeatureTypeImpl implements ModifiableType {
 
     private Collection<PropertyDescriptor> schema;
 
@@ -19,13 +18,18 @@ public class ModifiableComplexFeatureType extends ComplexFeatureTypeImpl impleme
 
     private Map<Name, PropertyDescriptor> propertyMap;
 
-    public ModifiableComplexFeatureType(Name name, Collection<PropertyDescriptor> schema, GeometryDescriptor defaultGeometry, boolean isAbstract, List<Filter> restrictions, AttributeType superType, InternationalString description) {
+    public ModifiableComplexFeatureType(
+            Name name,
+            Collection<PropertyDescriptor> schema,
+            GeometryDescriptor defaultGeometry,
+            boolean isAbstract,
+            List<Filter> restrictions,
+            AttributeType superType,
+            InternationalString description) {
         super(name, schema, defaultGeometry, isAbstract, restrictions, superType, description);
-        if (schema.isEmpty())
-            this.schema= new ArrayList<>();
-        else
-            this.schema=new ArrayList<>(schema);
-        this.properties=schema;
+        if (schema.isEmpty()) this.schema = new ArrayList<>();
+        else this.schema = new ArrayList<>(schema);
+        this.properties = new ArrayList<>(schema);
         Map<Name, PropertyDescriptor> localPropertyMap;
         if (properties == null) {
             localPropertyMap = Collections.emptyMap();
@@ -41,7 +45,7 @@ public class ModifiableComplexFeatureType extends ComplexFeatureTypeImpl impleme
                 localPropertyMap.put(pd.getName(), pd);
             }
         }
-        this.propertyMap=localPropertyMap;
+        this.propertyMap = localPropertyMap;
     }
 
     @Override
@@ -62,10 +66,10 @@ public class ModifiableComplexFeatureType extends ComplexFeatureTypeImpl impleme
         return result;
     }
 
-    public void addPropertyDescriptor (PropertyDescriptor descriptor){
+    public void addPropertyDescriptor(PropertyDescriptor descriptor) {
         this.schema.add(descriptor);
         this.properties.add(descriptor);
-        this.propertyMap.put(descriptor.getName(),descriptor);
+        this.propertyMap.put(descriptor.getName(), descriptor);
     }
 
     @Override
@@ -87,5 +91,10 @@ public class ModifiableComplexFeatureType extends ComplexFeatureTypeImpl impleme
     @Override
     public Collection<PropertyDescriptor> getTypeDescriptors() {
         return schema;
+    }
+
+    @Override
+    protected Object clone() throws CloneNotSupportedException {
+        return super.clone();
     }
 }

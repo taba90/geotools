@@ -1,7 +1,6 @@
 package org.geotools.data.mongodb.complex.schemaless;
 
 import java.util.*;
-
 import org.geotools.feature.NameImpl;
 import org.geotools.feature.type.ComplexTypeImpl;
 import org.opengis.feature.type.AttributeType;
@@ -10,12 +9,11 @@ import org.opengis.feature.type.PropertyDescriptor;
 import org.opengis.filter.Filter;
 import org.opengis.util.InternationalString;
 
-public class ModifiableComplexTypeImpl extends ComplexTypeImpl implements ModifiableType{
+public class ModifiableComplexTypeImpl extends ComplexTypeImpl implements ModifiableType {
 
     private final Collection<PropertyDescriptor> properties;
 
     private final Map<Name, PropertyDescriptor> propertyMap;
-
 
     public ModifiableComplexTypeImpl(
             Name name,
@@ -48,10 +46,10 @@ public class ModifiableComplexTypeImpl extends ComplexTypeImpl implements Modifi
         this.propertyMap = localPropertyMap;
     }
 
-    public void addPropertyDescriptor (PropertyDescriptor pd){
-        if (!properties.contains(pd)){
+    public void addPropertyDescriptor(PropertyDescriptor pd) {
+        if (!properties.contains(pd)) {
             properties.add(pd);
-            propertyMap.put(pd.getName(),pd);
+            propertyMap.put(pd.getName(), pd);
         }
     }
 

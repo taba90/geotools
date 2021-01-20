@@ -18,12 +18,8 @@
 package org.geotools.data.mongodb.complex.schemaless;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
-import org.apache.commons.lang3.StringUtils;
 import org.geotools.data.DataAccessFactory;
-import org.geotools.data.mongodb.MongoSchemaInitParams;
 import org.geotools.data.ows.HTTPClient;
 import org.geotools.data.ows.SimpleHttpClient;
 
@@ -38,20 +34,6 @@ public class SchemalessMongoDataStoreFactory implements DataAccessFactory {
                     "MongoDB URI",
                     true,
                     "mongodb://localhost/<database name>");
-    public static final Param MAX_OBJECTS_FOR_SCHEMA =
-            new Param(
-                    "max_objs_schema",
-                    Integer.class,
-                    "Max objects for schema generation",
-                    false,
-                    1);
-    public static final Param OBJECTS_IDS_FOR_SCHEMA =
-            new Param(
-                    "objs_id_schema",
-                    String.class,
-                    "Objects IDs for schema generation (comma separated)",
-                    false,
-                    null);
     public static final Param HTTP_USER =
             new Param(
                     "http_user",
@@ -79,14 +61,7 @@ public class SchemalessMongoDataStoreFactory implements DataAccessFactory {
 
     @Override
     public Param[] getParametersInfo() {
-        return new Param[] {
-            NAMESPACE,
-            DATASTORE_URI,
-            MAX_OBJECTS_FOR_SCHEMA,
-            OBJECTS_IDS_FOR_SCHEMA,
-            HTTP_USER,
-            HTTP_PASSWORD
-        };
+        return new Param[] {NAMESPACE, DATASTORE_URI, HTTP_USER, HTTP_PASSWORD};
     }
 
     @Override
@@ -97,43 +72,15 @@ public class SchemalessMongoDataStoreFactory implements DataAccessFactory {
     @Override
     public SchemalessDataAccess createDataStore(Map<String, ?> params) throws IOException {
         // retrieve schema generation parameters
-        final List<String> ids = getIds(params);
-        final Integer maxObjects = (Integer) MAX_OBJECTS_FOR_SCHEMA.lookUp(params);
-        final MongoSchemaInitParams schemaParams =
-                MongoSchemaInitParams.builder()
-                        .ids(ids.toArray(new String[] {}))
-                        .maxObjects(maxObjects != null ? maxObjects : 1)
-                        .build();
         // instance datastore
         SchemalessDataAccess dataStore =
                 new SchemalessDataAccess(
-                        (String) DATASTORE_URI.lookUp(params),
-                        true,
-                        schemaParams,
-                        getHTTPClient(params));
+                        (String) DATASTORE_URI.lookUp(params), true, getHTTPClient(params));
         String uri = (String) NAMESPACE.lookUp(params);
         if (uri != null) {
             dataStore.setNamespaceURI(uri);
         }
         return dataStore;
-    }
-
-    private List<String> getIds(Map<String, ?> params) throws IOException {
-        List<String> ids = new ArrayList<>();
-        Object ofs = OBJECTS_IDS_FOR_SCHEMA.lookUp(params);
-        // if null, there are not ids to parse
-        if (ofs == null) return ids;
-        // type checking
-        if (!(ofs instanceof String)) {
-            throw new IllegalArgumentException("Object Ids parameter should be String type.");
-        }
-        String idsStr = (String) ofs;
-        String[] parts = idsStr.split(",");
-        for (String epart : parts) {
-            String id = epart.trim();
-            if (StringUtils.isNotEmpty(id)) ids.add(id);
-        }
-        return ids;
     }
 
     private HTTPClient getHTTPClient(Map<String, ?> params) throws IOException {

@@ -3,7 +3,6 @@ package org.geotools.data.mongodb.complex.schemaless;
 import com.mongodb.*;
 import java.io.IOException;
 import java.util.*;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
@@ -13,23 +12,14 @@ import org.bson.Document;
 import org.geotools.data.DataAccess;
 import org.geotools.data.FeatureSource;
 import org.geotools.data.ServiceInfo;
-import org.geotools.data.complex.feature.type.ComplexFeatureTypeImpl;
-import org.geotools.data.mongodb.MongoDataStore;
-import org.geotools.data.mongodb.MongoSchemaInitParams;
-import org.geotools.data.mongodb.MongoUtil;
 import org.geotools.data.mongodb.complex.JsonSelectAllFunction;
 import org.geotools.data.mongodb.complex.JsonSelectFunction;
 import org.geotools.data.ows.HTTPClient;
-import org.geotools.feature.AttributeTypeBuilder;
 import org.geotools.feature.NameImpl;
 import org.geotools.filter.FilterCapabilities;
-import org.geotools.referencing.crs.DefaultGeographicCRS;
 import org.geotools.util.logging.Logging;
-import org.locationtech.jts.geom.Geometry;
 import org.opengis.feature.Feature;
 import org.opengis.feature.type.FeatureType;
-import org.opengis.feature.type.GeometryDescriptor;
-import org.opengis.feature.type.GeometryType;
 import org.opengis.feature.type.Name;
 import org.opengis.filter.*;
 import org.opengis.filter.spatial.BBOX;
@@ -38,11 +28,7 @@ import org.opengis.filter.spatial.Within;
 
 public class SchemalessDataAccess implements DataAccess<FeatureType, Feature> {
 
-    private static final Logger LOGGER = Logging.getLogger(MongoDataStore.class);
-
-    static final String KEY_mapping = "mapping";
-    static final String KEY_encoding = "encoding";
-    static final String KEY_collection = "collection";
+    private static final Logger LOGGER = Logging.getLogger(SchemalessDataAccess.class);
 
     final MongoClient dataStoreClient;
     final DB dataStoreDB;
@@ -55,18 +41,12 @@ public class SchemalessDataAccess implements DataAccess<FeatureType, Feature> {
     @SuppressWarnings("deprecation")
     FilterCapabilities filterCapabilities;
 
-    // parameters for precise schema generation from actual mongodb data
-    private MongoSchemaInitParams schemaInitParams;
-
     protected String namespaceURI;
 
     private List<Name> typeNames;
 
     public SchemalessDataAccess(
-            String dataStoreURI,
-            boolean createDatabaseIfNeeded,
-            MongoSchemaInitParams schemaInitParams,
-            HTTPClient httpClient) {
+            String dataStoreURI, boolean createDatabaseIfNeeded, HTTPClient httpClient) {
         MongoClientURI dataStoreClientURI = createMongoClientURI(dataStoreURI);
         dataStoreClient = createMongoClient(dataStoreClientURI);
         dataStoreDB =
@@ -83,9 +63,6 @@ public class SchemalessDataAccess implements DataAccess<FeatureType, Feature> {
         this.httpClient = httpClient;
 
         filterCapabilities = createFilterCapabilties();
-
-        if (schemaInitParams != null) this.schemaInitParams = schemaInitParams;
-        else this.schemaInitParams = MongoSchemaInitParams.builder().build();
     }
 
     final FilterCapabilities createFilterCapabilties() {
@@ -212,35 +189,7 @@ public class SchemalessDataAccess implements DataAccess<FeatureType, Feature> {
 
     @Override
     public FeatureType getSchema(Name name) throws IOException {
-        String collectionName=dataStoreDB.getCollectionNames().stream().filter(n->n.equals(name.getLocalPart())).findFirst().get();
-        GeometryDescriptor descriptor = getGeometryDescriptorIfPresent(collectionName);
-        ComplexFeatureTypeImpl complexFeatureType =
-                new ComplexFeatureTypeImpl(
-                        name,
-                        Collections.emptyList(),
-                        descriptor,
-                        false,
-                        Collections.emptyList(),
-                        null,
-                        null);
-        return complexFeatureType;
-    }
-
-    private GeometryDescriptor getGeometryDescriptorIfPresent(String collection) {
-        Set<String> geometries = MongoUtil.findIndexedGeometries(dataStoreDB.getCollection(collection));
-        String geometryField = null;
-        if (geometries == null || geometries.isEmpty()) geometryField = "geometry";
-        else geometryField = geometries.iterator().next();
-
-        if (geometries.size() > 1) {
-
-        }
-        AttributeTypeBuilder attributeBuilder = new AttributeTypeBuilder();
-        attributeBuilder.setBinding(Geometry.class);
-        attributeBuilder.setName(geometryField);
-        attributeBuilder.setCRS(DefaultGeographicCRS.WGS84);
-        GeometryType type = attributeBuilder.buildGeometryType();
-        return attributeBuilder.buildDescriptor(name(geometryField), type);
+        return getFeatureSource(name).getSchema();
     }
 
     @Override
@@ -250,7 +199,7 @@ public class SchemalessDataAccess implements DataAccess<FeatureType, Feature> {
     }
 
     public FilterCapabilities getFilterCapabilities() {
-        return new FilterCapabilities();
+        return filterCapabilities;
     }
 
     @Override
