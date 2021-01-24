@@ -74,6 +74,13 @@ public class AppSchemaDataAccessFactory implements DataAccessFactory {
                     "URL to an application schema datastore XML configuration file",
                     true);
 
+    public static final DataAccessFactory.Param ALLOW_COUNTS =
+            new DataAccessFactory.Param(
+                    "AllowCounts",
+                    Boolean.class,
+                    "Flag to allow count query for ComplexFeatures",
+                    false);
+
     public AppSchemaDataAccessFactory() {}
 
     public DataAccess<FeatureType, Feature> createDataStore(Map<String, ?> params)
@@ -120,8 +127,10 @@ public class AppSchemaDataAccessFactory implements DataAccessFactory {
         }
 
         mappings = AppSchemaDataAccessConfigurator.buildMappings(config, sourceDataStoreMap);
+        Boolean allowCounts =
+                ALLOW_COUNTS.lookUp(params) != null ? (Boolean) ALLOW_COUNTS.lookUp(params) : false;
 
-        dataStore = new AppSchemaDataAccess(mappings, hidden);
+        dataStore = new AppSchemaDataAccess(mappings, hidden, allowCounts);
         registeredAppSchemaStores.add(dataStore);
         return dataStore;
     }
@@ -169,7 +178,9 @@ public class AppSchemaDataAccessFactory implements DataAccessFactory {
 
     public DataStoreFactorySpi.Param[] getParametersInfo() {
         return new DataStoreFactorySpi.Param[] {
-            AppSchemaDataAccessFactory.DBTYPE, AppSchemaDataAccessFactory.URL
+            AppSchemaDataAccessFactory.DBTYPE,
+            AppSchemaDataAccessFactory.URL,
+            AppSchemaDataAccessFactory.ALLOW_COUNTS
         };
     }
 
