@@ -116,13 +116,14 @@ public class MongoToComplexFeature implements CollectionMapper<FeatureType, Feat
             descriptor = createDescriptor(false, nameCapitalized, complexType);
             complexPropertyType.addPropertyDescriptor(descriptor);
         }
+        ComplexFeatureBuilder featureBuilder=new ComplexFeatureBuilder((ModifiableComplexFeatureType)complexType);
         List<Property> attributes = getNestedAttributes(dbobject, complexType);
-        ComplexAttribute attribute =
-                attributeBuilder.createComplexAttribute(
-                        attributes, complexType, (AttributeDescriptor) descriptor, null);
+        for (Property p:attributes)
+            featureBuilder.append(p.getName(),p);
+        Feature f=featureBuilder.buildFeature(null);
         ComplexAttribute propertyType =
                 attributeBuilder.createComplexAttribute(
-                        Arrays.asList((Property) attribute),
+                        Arrays.asList(f),
                         complexPropertyType,
                         (AttributeDescriptor) propertyDescriptor,
                         null);
