@@ -8,7 +8,9 @@ import org.geotools.data.complex.feature.type.ComplexFeatureTypeFactoryImpl;
 import org.geotools.data.mongodb.CollectionMapper;
 import org.geotools.data.mongodb.complex.MongoComplexUtilities;
 import org.geotools.feature.*;
+import org.geotools.feature.type.ComplexTypeImpl;
 import org.geotools.gml3.v3_2.GMLSchema;
+import org.geotools.util.Converters;
 import org.locationtech.jts.geom.Geometry;
 import org.opengis.feature.*;
 import org.opengis.feature.type.*;
@@ -91,7 +93,8 @@ public class MongoToComplexFeature implements CollectionMapper<FeatureType, Feat
             DBObject dbobject,
             ModifiableType parentType,
             boolean isCollection) {
-        PropertyDescriptor propertyDescriptor = parentType.getDescriptor(attrName);
+        Name name = new NameImpl(namespaceURI, attrName);
+        PropertyDescriptor propertyDescriptor = parentType.getDescriptor(name);
         PropertyDescriptor descriptor =
                 propertyDescriptor != null
                         ? ((ComplexType) ((AttributeDescriptor) propertyDescriptor).getType())
@@ -111,16 +114,17 @@ public class MongoToComplexFeature implements CollectionMapper<FeatureType, Feat
             complexPropertyType = createComplexType(namespaceURI, attrName + "PropertyType");
             propertyDescriptor = createDescriptor(isCollection, attrName, complexPropertyType);
             parentType.addPropertyDescriptor(propertyDescriptor);
-            complexType = createComplexType(namespaceURI, attrName + "Type");
+            complexType =
+                    createComplexFeatureType(namespaceURI, attrName + "Type", new ArrayList<>());
             String nameCapitalized = attrName.substring(0, 1).toUpperCase() + attrName.substring(1);
-            descriptor = createDescriptor(false, nameCapitalized, complexType);
+            descriptor = createDescriptor(isCollection, nameCapitalized, complexType);
             complexPropertyType.addPropertyDescriptor(descriptor);
         }
-        ComplexFeatureBuilder featureBuilder=new ComplexFeatureBuilder((ModifiableComplexFeatureType)complexType);
+        ComplexFeatureBuilder featureBuilder =
+                new ComplexFeatureBuilder((AttributeDescriptor) descriptor);
         List<Property> attributes = getNestedAttributes(dbobject, complexType);
-        for (Property p:attributes)
-            featureBuilder.append(p.getName(),p);
-        Feature f=featureBuilder.buildFeature(null);
+        for (Property p : attributes) featureBuilder.append(p.getName(), p);
+        Feature f = featureBuilder.buildFeature(null);
         ComplexAttribute propertyType =
                 attributeBuilder.createComplexAttribute(
                         Arrays.asList(f),
@@ -145,8 +149,9 @@ public class MongoToComplexFeature implements CollectionMapper<FeatureType, Feat
                                 true);
                 attributes.add(attribute);
             } else {
-                if (obj!=null)
-                    attributes.add(getLeafTypeAndAttribute(namespaceURI, attrName, obj, parentType));
+                if (obj != null)
+                    attributes.add(
+                            getLeafTypeAndAttribute(namespaceURI, attrName, obj, parentType));
             }
         }
         return attributes;
@@ -154,7 +159,8 @@ public class MongoToComplexFeature implements CollectionMapper<FeatureType, Feat
 
     private Attribute getLeafTypeAndAttribute(
             String namespaceURI, String attrName, Object value, AttributeType parentType) {
-        PropertyDescriptor attrDescriptor = ((ComplexType) parentType).getDescriptor(attrName);
+        Name name = new NameImpl(namespaceURI, attrName);
+        PropertyDescriptor attrDescriptor = ((ComplexType) parentType).getDescriptor(name);
         if (attrDescriptor == null) {
             this.updateSchema = true;
             typeBuilder.setBinding(value.getClass());
@@ -167,6 +173,9 @@ public class MongoToComplexFeature implements CollectionMapper<FeatureType, Feat
             if (parentType instanceof ModifiableType) {
                 ((ModifiableType) parentType).addPropertyDescriptor(attrDescriptor);
             }
+        }
+        if (!value.getClass().equals(attrDescriptor.getType().getBinding())) {
+            value = Converters.convert(value, attrDescriptor.getType().getBinding());
         }
         attributeBuilder.setDescriptor((AttributeDescriptor) attrDescriptor);
         return attributeBuilder.buildSimple(null, value);
@@ -208,7 +217,9 @@ public class MongoToComplexFeature implements CollectionMapper<FeatureType, Feat
             boolean isCollection, String attrName, ComplexType complexType) {
         typeBuilder.setMinOccurs(0);
         typeBuilder.setMaxOccurs(isCollection ? Integer.MAX_VALUE : 1);
-        AttributeDescriptor descriptor = typeBuilder.buildDescriptor(attrName, complexType);
+        AttributeDescriptor descriptor =
+                typeBuilder.buildDescriptor(
+                        new NameImpl(type.getName().getNamespaceURI(), attrName), complexType);
         return descriptor;
     }
 
@@ -262,5 +273,18 @@ public class MongoToComplexFeature implements CollectionMapper<FeatureType, Feat
     @Override
     public FeatureType buildFeatureType(Name name, DBCollection collection) {
         return null;
+    }
+
+    private ModifiableType createComplexFeatureType(
+            String namespaceURI, String typeName, Collection<PropertyDescriptor> descriptors) {
+        return new ModifiableNonFeatureTypeProxy(
+                new ComplexTypeImpl(
+                        new NameImpl(namespaceURI, typeName),
+                        descriptors,
+                        false,
+                        false,
+                        Collections.emptyList(),
+                        GMLSchema.ABSTRACTGMLTYPE_TYPE,
+                        null));
     }
 }

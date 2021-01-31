@@ -181,7 +181,7 @@ public class SchemalessFeatureSource implements FeatureSource<FeatureType, Featu
                             GMLSchema.ABSTRACTFEATURETYPE_TYPE,
                             null);
             NamespaceSupport namespaces = new NamespaceSupport();
-            namespaces.declarePrefix("cite", name.getURI());
+            namespaces.declarePrefix("datex_3_0", "http://www.vegvesen.no/datex/3.0");
             namespaces.declarePrefix("xsi", "http://www.w3.org/2001/XMLSchema-instance");
             namespaces.declarePrefix("xlink", "http://www.w3.org/1999/xlink");
             Map<Object, Object> userData = featureType.getUserData();
@@ -327,18 +327,23 @@ public class SchemalessFeatureSource implements FeatureSource<FeatureType, Featu
     }
 
     private String toMongoPath(String pn) {
-        String[] steps = pn.split("/");
+        String[] splittedPn = pn.split("/");
         StringBuilder sb = new StringBuilder("");
-        for (int i = 0; i < steps.length; i++) {
-            String step = steps[i];
-            String[] splitted = step.split(":");
-
-            if (splitted.length > 1) {
-                sb.append(splitted[1]);
-            } else {
-                sb.append(splitted[0]);
+        String prev = null;
+        for (int i = 0; i < splittedPn.length; i++) {
+            String xpathStep = splittedPn[i];
+            if (xpathStep.indexOf(":") != -1) xpathStep = xpathStep.split(":")[1];
+            int index = xpathStep.indexOf("Index");
+            if (index != -1) {
+                xpathStep = xpathStep.substring(0, index);
             }
-            if (i < steps.length - 1) sb.append(".");
+            String nameCapitalized =
+                    prev != null ? prev.substring(0, 1).toUpperCase() + prev.substring(1) : null;
+            if (!xpathStep.equals(prev) && !xpathStep.equals(nameCapitalized)) {
+                sb.append(xpathStep);
+                if (i != splittedPn.length - 1) sb.append(".");
+            }
+            prev = xpathStep;
         }
         return sb.toString();
     }

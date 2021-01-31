@@ -205,9 +205,9 @@ public class GroupCandidateSelectionProcess implements VectorProcess {
 
     private PropertyName validatePropertyName(PropertyName pn, FeatureType schema) {
         // checks propertyName against the schema
-        if (pn.evaluate(schema) == null)
-            throw new ProcessException(
-                    "Unable to resolve " + pn.getPropertyName() + " against the FeatureType");
+        /*if (pn.evaluate(schema) == null)
+        throw new ProcessException(
+                "Unable to resolve " + pn.getPropertyName() + " against the FeatureType");*/
         return pn;
     }
 
