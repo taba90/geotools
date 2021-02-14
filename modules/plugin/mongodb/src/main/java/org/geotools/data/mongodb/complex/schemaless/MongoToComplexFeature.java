@@ -51,23 +51,24 @@ public class MongoToComplexFeature implements CollectionMapper<FeatureType, Feat
             }
         }
         Feature f = featureBuilder.buildFeature(rootDBO.get("_id").toString());
-        f.setDefaultGeometryProperty(geometryAttribute);
+        if (geometryAttribute!=null)
+            f.setDefaultGeometryProperty(geometryAttribute);
         return f;
     }
 
     private List<Property> getNestedAttributes(DBObject rootDBO, AttributeType parentType) {
         Set<String> keys = rootDBO.keySet();
-        String namespaceURI = type.getName().getNamespaceURI();
+        String namespaceURI = null;
         List<Property> attributes = new ArrayList<>();
         for (String key : keys) {
             Object value = rootDBO.get(key);
-            value = MongoComplexUtilities.convertGeometry(value, null);
-            if (value instanceof Geometry) {
-                GeometryAttribute geometryAttribute =
-                        createGeometryAttribute((Geometry) value, namespaceURI, key, parentType);
-                attributes.add(geometryAttribute);
-            } else if (value != null) {
-                if (value instanceof BasicDBList) {
+            if (value != null) {
+                value = MongoComplexUtilities.convertGeometry(value, null);
+                if (value instanceof Geometry || value.getClass().isAssignableFrom(Geometry.class)) {
+                    GeometryAttribute geometryAttribute =
+                            createGeometryAttribute((Geometry) value, namespaceURI, key, parentType);
+                    attributes.add(geometryAttribute);
+                } else if (value instanceof BasicDBList) {
                     BasicDBList list = (BasicDBList) value;
                     attributes.addAll(
                             getListTypeAndAttributes(namespaceURI, key, list, parentType));
@@ -93,7 +94,7 @@ public class MongoToComplexFeature implements CollectionMapper<FeatureType, Feat
             DBObject dbobject,
             ModifiableType parentType,
             boolean isCollection) {
-        Name name = new NameImpl(namespaceURI, attrName);
+        Name name = new NameImpl(attrName);
         PropertyDescriptor propertyDescriptor = parentType.getDescriptor(name);
         PropertyDescriptor descriptor =
                 propertyDescriptor != null
@@ -159,7 +160,7 @@ public class MongoToComplexFeature implements CollectionMapper<FeatureType, Feat
 
     private Attribute getLeafTypeAndAttribute(
             String namespaceURI, String attrName, Object value, AttributeType parentType) {
-        Name name = new NameImpl(namespaceURI, attrName);
+        Name name = new NameImpl(attrName);
         PropertyDescriptor attrDescriptor = ((ComplexType) parentType).getDescriptor(name);
         if (attrDescriptor == null) {
             this.updateSchema = true;
@@ -219,14 +220,14 @@ public class MongoToComplexFeature implements CollectionMapper<FeatureType, Feat
         typeBuilder.setMaxOccurs(isCollection ? Integer.MAX_VALUE : 1);
         AttributeDescriptor descriptor =
                 typeBuilder.buildDescriptor(
-                        new NameImpl(type.getName().getNamespaceURI(), attrName), complexType);
+                        new NameImpl(attrName), complexType);
         return descriptor;
     }
 
     private ModifiableType createComplexType(String namespaceURI, String typeName) {
         String nameCapitalized = typeName.substring(0, 1).toUpperCase() + typeName.substring(1);
         return new ModifiableComplexTypeImpl(
-                new NameImpl(namespaceURI, nameCapitalized),
+                new NameImpl(nameCapitalized),
                 Collections.emptyList(),
                 false,
                 false,
@@ -279,7 +280,7 @@ public class MongoToComplexFeature implements CollectionMapper<FeatureType, Feat
             String namespaceURI, String typeName, Collection<PropertyDescriptor> descriptors) {
         return new ModifiableNonFeatureTypeProxy(
                 new ComplexTypeImpl(
-                        new NameImpl(namespaceURI, typeName),
+                        new NameImpl(typeName),
                         descriptors,
                         false,
                         false,

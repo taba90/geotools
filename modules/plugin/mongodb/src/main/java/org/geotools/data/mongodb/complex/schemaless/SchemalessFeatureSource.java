@@ -180,13 +180,7 @@ public class SchemalessFeatureSource implements FeatureSource<FeatureType, Featu
                             Collections.emptyList(),
                             GMLSchema.ABSTRACTFEATURETYPE_TYPE,
                             null);
-            NamespaceSupport namespaces = new NamespaceSupport();
-            namespaces.declarePrefix("datex_3_0", "http://www.vegvesen.no/datex/3.0");
-            namespaces.declarePrefix("xsi", "http://www.w3.org/2001/XMLSchema-instance");
-            namespaces.declarePrefix("xlink", "http://www.w3.org/1999/xlink");
-            Map<Object, Object> userData = featureType.getUserData();
-            userData.put(Types.DECLARED_NAMESPACES_MAP, getNamespacesMap(namespaces));
-            userData.put(Types.SKIP_STYLE_VALIDATION, true);
+            featureType.getUserData().put(Types.SKIP_STYLE_VALIDATION, true);
         }
         return featureType;
     }
@@ -220,7 +214,7 @@ public class SchemalessFeatureSource implements FeatureSource<FeatureType, Featu
     }
 
     protected final Name name(String typeName) {
-        return new NameImpl(name.getNamespaceURI(), typeName);
+        return new NameImpl(typeName);
     }
 
     @Override
