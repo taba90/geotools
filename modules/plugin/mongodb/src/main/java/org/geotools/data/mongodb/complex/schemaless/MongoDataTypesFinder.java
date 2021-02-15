@@ -63,6 +63,7 @@ public class MongoDataTypesFinder {
     private String getJsonPathFromPropertyPath(String propertyName) {
         String[] splittedPn = propertyName.split("/");
         StringBuilder sb = new StringBuilder("");
+        String prev = null;
         for (int i = 0; i < splittedPn.length; i++) {
             String xpathStep = splittedPn[i];
             if (xpathStep.indexOf(":") != -1) xpathStep = xpathStep.split(":")[1];
@@ -70,8 +71,15 @@ public class MongoDataTypesFinder {
             if (index != -1) {
                 xpathStep = xpathStep.substring(0, index);
             }
-            sb.append(xpathStep);
-            if (i != splittedPn.length - 1) sb.append(".");
+            String nameCapitalized =
+                    prev != null
+                            ? prev.substring(0, 1).toUpperCase() + prev.substring(1)
+                            : null;
+            if (!xpathStep.equals(prev) && !xpathStep.equals(nameCapitalized)) {
+                sb.append(xpathStep);
+                if (i != splittedPn.length - 1) sb.append(".");
+            }
+            prev = xpathStep;
         }
         return sb.toString();
     }
