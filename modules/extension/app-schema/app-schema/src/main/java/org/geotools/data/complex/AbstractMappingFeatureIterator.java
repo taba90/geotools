@@ -423,7 +423,6 @@ public abstract class AbstractMappingFeatureIterator implements IMappingFeatureI
         ++featureCounter;
 
         setHasNextCalled(false);
-
         return next;
     }
 
