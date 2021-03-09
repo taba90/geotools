@@ -18,14 +18,17 @@
 package org.geotools.data.mongodb;
 
 import com.mongodb.DBObject;
+import org.bson.Document;
 import org.geotools.feature.simple.SimpleFeatureImpl;
 import org.geotools.filter.identity.FeatureIdImpl;
 import org.opengis.feature.simple.SimpleFeatureType;
 import org.opengis.referencing.crs.CoordinateReferenceSystem;
 
+import javax.print.Doc;
+
 public class MongoFeature extends SimpleFeatureImpl {
 
-    private final DBObject mongoObject;
+    private final Document mongoObject;
     private final Object[] values;
     private CoordinateReferenceSystem originalCRS;
 
@@ -34,14 +37,14 @@ public class MongoFeature extends SimpleFeatureImpl {
     }
 
     public MongoFeature(
-            DBObject mongoObject, Object[] values, SimpleFeatureType featureType, String id) {
+            Document mongoObject, Object[] values, SimpleFeatureType featureType, String id) {
         super(values, featureType, new FeatureIdImpl(id), false);
         this.values = values;
         this.mongoObject = mongoObject;
         this.originalCRS = this.featureType.getGeometryDescriptor().getCoordinateReferenceSystem();
     }
 
-    public DBObject getMongoObject() {
+    public Document getMongoObject() {
         return mongoObject;
     }
 

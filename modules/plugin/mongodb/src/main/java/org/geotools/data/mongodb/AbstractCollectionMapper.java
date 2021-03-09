@@ -20,6 +20,8 @@ package org.geotools.data.mongodb;
 import com.mongodb.DBObject;
 import java.util.ArrayList;
 import java.util.List;
+
+import org.bson.Document;
 import org.geotools.util.Converters;
 import org.opengis.feature.simple.SimpleFeature;
 import org.opengis.feature.simple.SimpleFeatureType;
@@ -35,7 +37,7 @@ public abstract class AbstractCollectionMapper implements CollectionMapper {
     public static final String MONGO_OBJECT_FEATURE_KEY = "MONGO_OBJECT_FEATURE";
 
     @Override
-    public SimpleFeature buildFeature(DBObject rootDBO, SimpleFeatureType featureType) {
+    public SimpleFeature buildFeature(Document rootDBO, SimpleFeatureType featureType) {
 
         String gdLocalName = featureType.getGeometryDescriptor().getLocalName();
         List<AttributeDescriptor> adList = featureType.getAttributeDescriptors();

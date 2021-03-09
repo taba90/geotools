@@ -19,9 +19,19 @@ package org.geotools.data.mongodb;
 
 import com.mongodb.BasicDBList;
 import com.mongodb.BasicDBObjectBuilder;
-import com.mongodb.DBObject;
+import com.mongodb.MongoClientSettings;
+import com.mongodb.client.MongoClient;
+import org.bson.BsonArray;
+import org.bson.BsonDocument;
+import org.bson.BsonDouble;
+import org.bson.BsonString;
+import org.bson.BsonValue;
+import org.bson.Document;
 import java.util.ArrayList;
 import java.util.List;
+
+import org.bson.codecs.configuration.CodecRegistries;
+import org.bson.codecs.configuration.CodecRegistry;
 import org.geotools.geometry.jts.Geometries;
 import org.locationtech.jts.algorithm.Orientation;
 import org.locationtech.jts.geom.Coordinate;
@@ -37,18 +47,13 @@ import org.locationtech.jts.geom.MultiPoint;
 import org.locationtech.jts.geom.MultiPolygon;
 import org.locationtech.jts.geom.Point;
 import org.locationtech.jts.geom.Polygon;
+import org.omg.IOP.CodecFactory;
+
+import javax.print.Doc;
 
 public class MongoGeometryBuilder {
 
     GeometryFactory geometryFactory;
-
-    // MongoDB 2.4 doesn't support the multi-geometry
-    // GeoJSON types.  A lot of multi-geometry instances encode
-    // a single geometry.  This flag will allow the conversion
-    // of JTS multi-geometry types encoding a single geometry
-    // to their single geometry analog. This should ease some of
-    // the pain...
-    boolean opportunisticMultiGeometryCoversion = true;
 
     public MongoGeometryBuilder() {
         this(new GeometryFactory());
@@ -58,18 +63,17 @@ public class MongoGeometryBuilder {
         this.geometryFactory = geomFactory;
     }
 
-    public Geometry toGeometry(DBObject obj) {
-        if (obj == null) {
+    public Geometry toGeometry(BsonDocument document) {
+        if (document == null) {
             return null;
         }
-        String type = (String) obj.get("type");
-
+        String type = document.getString("type").getValue();
         Geometries g = Geometries.getForName(type);
         if (g == null) {
             throw new IllegalArgumentException("Unable to create geometry of type: " + type);
         }
 
-        BasicDBList list = (BasicDBList) obj.get("coordinates");
+        BsonArray list = document.getArray("coordinates");
         switch (g) {
             case POINT:
                 return toPoint(list);
@@ -84,130 +88,123 @@ public class MongoGeometryBuilder {
             case MULTIPOLYGON:
                 return toMultiPolygon(list);
             case GEOMETRYCOLLECTION:
-                return toGeometryCollection((BasicDBList) obj.get("geometries"));
+                return toGeometryCollection(document.getArray("geometries"));
             default:
                 throw new IllegalArgumentException("Unknown geometry type: " + type);
         }
     }
 
-    public DBObject toObject(Envelope envelope) {
-        return toObject(geometryFactory.toGeometry(envelope));
+    public BsonDocument toBsonDocument(Envelope envelope) {
+        return toBsonDocument(geometryFactory.toGeometry(envelope));
     }
 
-    public DBObject toObject(Geometry geom) {
+    public BsonDocument toBsonDocument(Geometry geom) {
         Geometries g = Geometries.get(geom);
         switch (g) {
             case POINT:
-                return toObject((Point) geom);
+                return toBsonDocument((Point) geom);
             case LINESTRING:
-                return toObject((LineString) geom);
+                return toBsonDocument((LineString) geom);
             case POLYGON:
-                return toObject((Polygon) geom);
+                return toBsonDocument((Polygon) geom);
             case MULTIPOINT:
-                return toObject((MultiPoint) geom);
+                return toBsonDocument((MultiPoint) geom);
             case MULTILINESTRING:
-                return toObject((MultiLineString) geom);
+                return toBsonDocument((MultiLineString) geom);
             case MULTIPOLYGON:
-                return toObject((MultiPolygon) geom);
+                return toBsonDocument((MultiPolygon) geom);
             case GEOMETRYCOLLECTION:
-                return toObject((GeometryCollection) geom);
+                return toBsonDocument((GeometryCollection) geom);
             default:
                 throw new IllegalArgumentException("Unknown geometry type: " + geom);
         }
     }
 
-    public GeometryCollection toGeometryCollection(BasicDBList obj) {
+    public GeometryCollection toGeometryCollection(BsonArray bsonArray) {
         List<Geometry> geoms = new ArrayList<>();
-        for (Object o : obj) {
-            geoms.add(toGeometry((DBObject) o)); // JG: changed from toGeometry( obj )
+        for (BsonValue value : bsonArray) {
+            geoms.add(toGeometry(value.asDocument()));
         }
         return geometryFactory.createGeometryCollection(geoms.toArray(new Geometry[geoms.size()]));
     }
 
-    public DBObject toObject(GeometryCollection gc) {
+    public BsonDocument toBsonDocument(GeometryCollection gc) {
         return null;
     }
 
-    public MultiPolygon toMultiPolygon(List<?> list) {
+    public MultiPolygon toMultiPolygon(BsonArray array) {
         List<Polygon> polys = new ArrayList<>();
-        for (Object o : list) {
-            polys.add(toPolygon((List<?>) o));
+        for (BsonValue value : array) {
+            polys.add(toPolygon(value.asArray()));
         }
         return geometryFactory.createMultiPolygon(polys.toArray(new Polygon[polys.size()]));
     }
 
-    public DBObject toObject(MultiPolygon mp) {
-        if (opportunisticMultiGeometryCoversion && mp.getNumGeometries() == 1) {
-            return toObject((Polygon) mp.getGeometryN(0));
-        }
-        List<Object> l = new BasicDBList();
+    public BsonDocument toBsonDocument(MultiPolygon mp) {
+        BsonArray array = new BsonArray();
         for (int i = 0; i < mp.getNumGeometries(); i++) {
-            l.add(toList(((Polygon) mp.getGeometryN(i))));
+            array.add(toBsonArray(((Polygon) mp.getGeometryN(i))));
         }
-        return BasicDBObjectBuilder.start().add("type", "MultiPolygon").add("coordinates", l).get();
+        return new BsonDocument()
+                .append("type", new BsonString("MultiPolygon"))
+                .append("coordinates", array);
     }
 
-    public MultiLineString toMultiLineString(List<?> list) {
+    public MultiLineString toMultiLineString(BsonArray array) {
         List<LineString> lines = new ArrayList<>();
-        for (Object o : list) {
-            lines.add(toLineString((List<?>) o));
+        for (BsonValue value : array) {
+            lines.add(toLineString(value.asArray()));
         }
         return geometryFactory.createMultiLineString(lines.toArray(new LineString[lines.size()]));
     }
 
-    public DBObject toObject(MultiLineString ml) {
-        if (opportunisticMultiGeometryCoversion && ml.getNumGeometries() == 1) {
-            return toObject((LineString) ml.getGeometryN(0));
-        }
-        List<Object> l = new BasicDBList();
+    public BsonDocument toBsonDocument(MultiLineString ml) {
+        BsonArray array = new BsonArray();
         for (int i = 0; i < ml.getNumGeometries(); i++) {
-            l.add(toList(((LineString) ml.getGeometryN(i)).getCoordinateSequence()));
+            array.add(toBsonArray(((LineString) ml.getGeometryN(i)).getCoordinateSequence()));
         }
-        return BasicDBObjectBuilder.start()
-                .add("type", "MultiLineString")
-                .add("coordinates", l)
-                .get();
+        return new BsonDocument()
+                .append("type", new BsonString("MultiLineString"))
+                .append("coordinates", array);
     }
 
-    public MultiPoint toMultiPoint(List<?> list) {
+    public MultiPoint toMultiPoint(BsonArray array) {
         List<Point> points = new ArrayList<>();
-        for (Object o : list) {
-            points.add(toPoint((List<?>) o));
+        for (int i = 0; i < array.size(); i++) {
+            points.add(toPoint(array.get(i).asArray()));
         }
         return geometryFactory.createMultiPoint(points.toArray(new Point[points.size()]));
     }
 
-    public DBObject toObject(MultiPoint mp) {
-        if (opportunisticMultiGeometryCoversion && mp.getNumGeometries() == 1) {
-            return toObject((Point) mp.getGeometryN(0));
-        }
-        return BasicDBObjectBuilder.start()
-                .add("type", "MultiPoint")
-                .add("coordinates", toList(mp.getCoordinates()))
-                .get();
+    public BsonDocument toBsonDocument(MultiPoint mp) {
+        BsonDocument document = new BsonDocument();
+        return document.append("type", new BsonString("MultiPoint"))
+                .append("coordinates", toBsonArray(mp.getCoordinates()));
     }
 
-    public Polygon toPolygon(List<?> list) {
-        LinearRing outer = (LinearRing) toLineString((List<?>) list.get(0));
+    public Polygon toPolygon(BsonArray array) {
+        LinearRing outer = (LinearRing) toLineString(array.get(0).asArray());
         List<LinearRing> inner = new ArrayList<>();
-        for (int i = 1; i < list.size(); i++) {
-            inner.add((LinearRing) toLineString((List<?>) list.get(i)));
+        for (int i = 1; i < array.size(); i++) {
+            inner.add((LinearRing) toLineString(array.get(i).asArray()));
         }
         return geometryFactory.createPolygon(outer, inner.toArray(new LinearRing[inner.size()]));
     }
 
-    public DBObject toObject(Polygon p) {
-        return BasicDBObjectBuilder.start()
-                .add("type", "Polygon")
-                .add("coordinates", toList(p))
-                .get();
+    public BsonDocument toBsonDocument(Polygon p) {
+        return new BsonDocument()
+                .append("type", new BsonString("Polygon"))
+                .append("coordinates", toBsonArray(p));
     }
 
-    public LineString toLineString(List<?> list) {
-        List<Coordinate> coordList = new ArrayList<>(list.size());
-        for (Object o : list) {
-            coordList.add(toCoordinate((List<?>) o));
+    public LineString toLineString(BsonArray array) {
+        List<Coordinate> coordList = new ArrayList<>(array.size());
+        for (BsonValue value : array) {
+            if (value.isArray()) {
+                coordList.add(toCoordinate(value.asArray()));
+            }
         }
+        if (coordList.isEmpty()) coordList.add(toCoordinate(array));
 
         Coordinate[] coords = coordList.toArray(new Coordinate[coordList.size()]);
         if (coords.length > 3 && coords[0].equals(coords[coords.length - 1])) {
@@ -216,72 +213,70 @@ public class MongoGeometryBuilder {
         return geometryFactory.createLineString(coords);
     }
 
-    public DBObject toObject(LineString l) {
-        return BasicDBObjectBuilder.start()
-                .add("type", "LineString")
-                .add("coordinates", toList(l.getCoordinateSequence()))
-                .get();
+    public BsonDocument toBsonDocument(LineString l) {
+        return new BsonDocument()
+                .append("type", new BsonString("LineString"))
+                .append("coordinates", toBsonArray(l.getCoordinateSequence()));
     }
 
-    public Point toPoint(List<?> list) {
-        return geometryFactory.createPoint(toCoordinate(list));
+    public Point toPoint(BsonArray array) {
+        return geometryFactory.createPoint(toCoordinate(array));
     }
 
-    public DBObject toObject(Point p) {
-        return BasicDBObjectBuilder.start()
-                .add("type", "Point")
-                .add("coordinates", toList(p.getCoordinate()))
-                .get();
+    public BsonDocument toBsonDocument(Point p) {
+        BsonDocument document = new BsonDocument();
+        return document.append("type", new BsonString("Point"))
+                .append("coordinates", toBsonArray(p.getCoordinate()));
     }
 
-    public Coordinate toCoordinate(List<?> list) {
-        double x = ((Number) list.get(0)).doubleValue();
-        double y = ((Number) list.get(1)).doubleValue();
+    public Coordinate toCoordinate(BsonArray array) {
+        double x = array.get(0).asDouble().doubleValue();
+        double y = array.get(1).asDouble().doubleValue();
         return new Coordinate(x, y);
     }
 
-    List<?> toList(Coordinate c) {
-        BasicDBList l = new BasicDBList();
-        l.add(c.x);
-        l.add(c.y);
-        return l;
+    BsonArray toBsonArray(Coordinate c) {
+        BsonArray array = new BsonArray();
+        array.add(new BsonDouble(c.x));
+        array.add(new BsonDouble(c.y));
+        return array;
     }
 
-    List<?> toList(CoordinateSequence cs) {
-        BasicDBList l = new BasicDBList();
+    BsonArray toBsonArray(CoordinateSequence cs) {
+        BsonArray array = new BsonArray();
         for (int i = 0; i < cs.size(); i++) {
-            BasicDBList m = new BasicDBList();
-            m.add(cs.getX(i));
-            m.add(cs.getY(i));
-            l.add(m);
+            BsonArray m = new BsonArray();
+            m.add(new BsonDouble(cs.getX(i)));
+            m.add(new BsonDouble(cs.getY(i)));
+            array.add(m);
         }
-        return l;
+        return array;
     }
 
-    List<?> toList(Coordinate[] cs) {
-        BasicDBList l = new BasicDBList();
+    BsonArray toBsonArray(Coordinate[] cs) {
+        BsonArray array = new BsonArray();
         for (Coordinate c : cs) {
-            BasicDBList m = new BasicDBList();
-            m.add(c.x);
-            m.add(c.y);
-            l.add(m);
+            BsonArray coor = new BsonArray();
+            coor.add(new BsonDouble(c.x));
+            coor.add(new BsonDouble(c.y));
+            array.add(coor);
         }
-        return l;
+        return array;
     }
 
-    List<?> toList(Polygon p) {
-        BasicDBList l = new BasicDBList();
+    BsonArray toBsonArray(Polygon p) {
+        BsonArray array = new BsonArray();
 
         if (!Orientation.isCCW(p.getExteriorRing().getCoordinates())) {
-            l.add(toList(p.getExteriorRing().reverse().getCoordinates()));
+            array.add(toBsonArray(p.getExteriorRing().reverse().getCoordinates()));
         } else {
-            l.add(toList(p.getExteriorRing().getCoordinateSequence()));
+            array.add(toBsonArray(p.getExteriorRing().getCoordinateSequence()));
         }
 
         for (int i = 0; i < p.getNumInteriorRing(); i++) {
-            l.add(toList(p.getInteriorRingN(i).getCoordinateSequence()));
+            array.add(toBsonArray(p.getInteriorRingN(i).getCoordinateSequence()));
         }
 
-        return l;
+        return array;
     }
 }

@@ -23,6 +23,9 @@ import com.mongodb.DBObject;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+
+import org.bson.BsonDocument;
+import org.bson.Document;
 import org.geotools.feature.AttributeTypeBuilder;
 import org.geotools.feature.simple.SimpleFeatureTypeBuilder;
 import org.geotools.referencing.CRS;
@@ -68,7 +71,7 @@ public class FeatureTypeDBObject {
 
     static final String PREFIX_URN_OGC = "urn:ogc:def:crs:";
 
-    public static BasicDBObject convert(SimpleFeatureType ft) {
+    public static BsonDocument convert(SimpleFeatureType ft) {
 
         BasicDBObject ftDBO = new BasicDBObject(KEY_typeName, ft.getTypeName());
         Map<String, String> ftUserData = typeCheck(ft.getUserData());
@@ -119,7 +122,7 @@ public class FeatureTypeDBObject {
         return convert(ftDBO, null);
     }
 
-    public static SimpleFeatureType convert(DBObject ftDBO, Name name) {
+    public static SimpleFeatureType convert(Document ftDBO, Name name) {
 
         SimpleFeatureTypeBuilder ftBuilder = new SimpleFeatureTypeBuilder();
 

@@ -17,8 +17,10 @@
  */
 package org.geotools.data.mongodb;
 
-import com.mongodb.DBCollection;
 import java.io.IOException;
+
+import com.mongodb.client.MongoCollection;
+import org.bson.Document;
 import org.geotools.data.FeatureReader;
 import org.geotools.data.FeatureWriter;
 import org.geotools.data.Query;
@@ -30,11 +32,12 @@ import org.opengis.feature.FeatureVisitor;
 import org.opengis.feature.simple.SimpleFeature;
 import org.opengis.feature.simple.SimpleFeatureType;
 
+
 public class MongoFeatureStore extends ContentFeatureStore {
 
     MongoFeatureSource delegate;
 
-    public MongoFeatureStore(ContentEntry entry, Query query, DBCollection collection) {
+    public MongoFeatureStore(ContentEntry entry, Query query, MongoCollection<Document> collection) {
         super(entry, query);
         delegate = new MongoFeatureSource(entry, query, collection);
     }

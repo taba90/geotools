@@ -18,9 +18,6 @@ package org.geotools.data.mongodb.complex;
 
 import static org.geotools.referencing.CRS.findMathTransform;
 
-import com.mongodb.BasicDBList;
-import com.mongodb.DBCursor;
-import com.mongodb.DBObject;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -30,11 +27,16 @@ import java.util.Set;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import com.mongodb.client.MongoCursor;
 import org.apache.commons.lang3.tuple.MutablePair;
 import org.apache.commons.lang3.tuple.Pair;
+import org.bson.BsonDocument;
+import org.bson.Document;
 import org.geotools.data.mongodb.AbstractCollectionMapper;
 import org.geotools.data.mongodb.MongoFeature;
 import org.geotools.data.mongodb.MongoGeometryBuilder;
+import org.geotools.data.mongodb.MongoUtil;
 import org.geotools.geometry.jts.GeometryCoordinateSequenceTransformer;
 import org.geotools.util.logging.Logging;
 import org.locationtech.jts.geom.Geometry;
@@ -82,7 +84,7 @@ public final class MongoComplexUtilities {
         Feature feature = (Feature) object;
         // try before to resolve jsonpath against the feature. If it is SimpleFeature
         // and we are on the root appSchema object there is no need to retrieve attributes
-        // from the DBObject
+        // from the Document
         if (feature instanceof SimpleFeature) {
             SimpleFeature sf = (SimpleFeature) feature;
             Object value = sf.getAttribute(jsonPath);
@@ -195,7 +197,7 @@ public final class MongoComplexUtilities {
      * the path contain a nested list of values an exception will be throw.
      */
     public static Object getValue(
-            DBObject mongoObject,
+            Document mongoObject,
             String jsonPath,
             Supplier<GeometryCoordinateSequenceTransformer> transformer) {
         return getValue(mongoObject, Collections.emptyMap(), jsonPath, transformer);
@@ -207,7 +209,7 @@ public final class MongoComplexUtilities {
      * present in the path.
      */
     public static Object getValue(
-            DBObject mongoObject,
+            Document mongoObject,
             Map<String, Integer> collectionsIndexes,
             String jsonPath,
             Supplier<GeometryCoordinateSequenceTransformer> transformer) {
@@ -221,11 +223,11 @@ public final class MongoComplexUtilities {
      */
     private static Object convertGeometry(
             Object value, Supplier<GeometryCoordinateSequenceTransformer> transformer) {
-        if (!(value instanceof DBObject) || value instanceof List) {
+        if (!(value instanceof Document) || value instanceof List) {
             // not a mongodb object or a list of values so nothing to do
             return value;
         }
-        DBObject object = (DBObject) value;
+        Document object = (Document) value;
         Set keys = object.keySet();
         if (keys.size() != 2 || !keys.contains("coordinates") || !keys.contains("type")) {
             // is mongo db object but not a geometry
@@ -235,7 +237,7 @@ public final class MongoComplexUtilities {
         MongoGeometryBuilder builder = new MongoGeometryBuilder();
         try {
             // return the converted geometry
-            Geometry geom = builder.toGeometry(object);
+            Geometry geom = builder.toGeometry(object.toBsonDocument(BsonDocument.class, MongoUtil.registry));
             if (transformer != null) {
                 geom = transformer.get().transform(geom);
             }
@@ -257,7 +259,7 @@ public final class MongoComplexUtilities {
         private Object currentObject;
 
         MongoObjectWalker(
-                DBObject mongoObject, Map<String, Integer> collectionsIndexes, String jsonPath) {
+                Document mongoObject, Map<String, Integer> collectionsIndexes, String jsonPath) {
             this.collectionsIndexes = collectionsIndexes;
             this.jsonPathParts = jsonPath.split("\\.");
             this.currentJsonPath = "";
@@ -282,13 +284,13 @@ public final class MongoComplexUtilities {
                 return false;
             }
             return currentJsonPathPartIndex < jsonPathParts.length
-                    || (currentObject instanceof BasicDBList
+                    || (currentObject instanceof List
                             && collectionsIndexes.get(currentJsonPath) != null);
         }
 
         private boolean isAnEmptyList(Object object) {
-            if (object instanceof BasicDBList) {
-                BasicDBList list = (BasicDBList) currentObject;
+            if (object instanceof List) {
+                List<Object> list = (List<Object>) currentObject;
                 if (list.isEmpty()) {
                     return true;
                 }
@@ -301,8 +303,8 @@ public final class MongoComplexUtilities {
             if (currentObject instanceof List) {
                 // the current object is a list, we need to select the current index
                 currentObject = next((List) currentObject);
-            } else if (currentObject instanceof DBObject) {
-                currentObject = next((DBObject) currentObject);
+            } else if (currentObject instanceof Document) {
+                currentObject = next((Document) currentObject);
             } else {
                 throw new RuntimeException(
                         String.format(
@@ -311,7 +313,7 @@ public final class MongoComplexUtilities {
             }
         }
 
-        private Object next(DBObject dbObject) {
+        private Object next(Document dbObject) {
             // we have a mongo db object, let's update the current json path
             currentJsonPath = concatPath(currentJsonPath, jsonPathParts[currentJsonPathPartIndex]);
             // get the value from the mongo db object that correspond to the current json path part
@@ -365,7 +367,7 @@ public final class MongoComplexUtilities {
      * If the path contains nested collections the values from all the branches will be merged.
      */
     public static Object getValues(
-            DBObject dbObject,
+            Document dbObject,
             String jsonPath,
             Supplier<GeometryCoordinateSequenceTransformer> transformer) {
         if (jsonPath == null || jsonPath.isEmpty() || dbObject == null) {
@@ -389,7 +391,7 @@ public final class MongoComplexUtilities {
      * path.
      */
     private static List<Object> getValuesHelper(
-            DBObject dbObject,
+            Document dbObject,
             String[] jsonPathParts,
             List<Object> values,
             int index,
@@ -413,7 +415,7 @@ public final class MongoComplexUtilities {
             } else {
                 // well we have a list so we need to interact over each element of the list
                 for (Object element : (List) object) {
-                    getValuesHelper((DBObject) element, jsonPathParts, values, index, transformer);
+                    getValuesHelper((Document) element, jsonPathParts, values, index, transformer);
                 }
             }
         } else {
@@ -422,7 +424,7 @@ public final class MongoComplexUtilities {
                 values.add(convertGeometry(object, transformer));
             } else {
                 // we need to go deeper in this object
-                getValuesHelper((DBObject) object, jsonPathParts, values, index, transformer);
+                getValuesHelper((Document) object, jsonPathParts, values, index, transformer);
             }
         }
         // we return the list of founded values for commodity
@@ -439,7 +441,7 @@ public final class MongoComplexUtilities {
     }
 
     /** Compute the mappings for a mongo db object, this can be used to create a feature mapping. */
-    public static Map<String, Class> findMappings(DBObject dbObject) {
+    public static Map<String, Class> findMappings(Document dbObject) {
         Map<String, Class> mappings = new HashMap<>();
         findMappingsHelper(dbObject, "", mappings);
         return mappings;
@@ -449,7 +451,7 @@ public final class MongoComplexUtilities {
      * Compute the mappings for a mongodb cursor(iterator), this can be used to create a feature
      * mapping. This method will close the cursor.
      */
-    public static Map<String, Class> findMappings(DBCursor cursor) {
+    public static Map<String, Class> findMappings(MongoCursor<Document> cursor) {
         Map<String, Class> mappings = new HashMap<>();
         try {
             while (cursor.hasNext()) {
@@ -467,9 +469,9 @@ public final class MongoComplexUtilities {
         if (object == null) {
             return;
         }
-        if (object instanceof DBObject) {
+        if (object instanceof Document) {
             LOG.log(Level.INFO, "Generating mappings from object: {0}", object);
-            DBObject dbObject = (DBObject) object;
+            Document dbObject = (Document) object;
             for (String key : dbObject.keySet()) {
                 Object value = dbObject.get(key);
                 if (value == null) {
@@ -483,7 +485,7 @@ public final class MongoComplexUtilities {
                             findMappingsHelper(eo, path, mappings);
                         }
                     }
-                } else if (value instanceof DBObject) {
+                } else if (value instanceof Document) {
                     findMappingsHelper(value, path, mappings);
                 } else {
                     mappings.putIfAbsent(path, value.getClass());

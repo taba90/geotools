@@ -17,10 +17,8 @@
  */
 package org.geotools.data.mongodb;
 
-import com.mongodb.DBCollection;
-import com.mongodb.DBCursor;
+
 import com.mongodb.DBObject;
-import com.mongodb.QueryBuilder;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -32,6 +30,13 @@ import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
+
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
+import com.mongodb.client.model.Filters;
+import org.bson.BsonDocument;
+import org.bson.Document;
+import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
 import org.geotools.data.mongodb.complex.MongoComplexUtilities;
 import org.geotools.feature.simple.SimpleFeatureTypeBuilder;
@@ -41,6 +46,8 @@ import org.locationtech.jts.geom.Geometry;
 import org.opengis.feature.simple.SimpleFeatureType;
 import org.opengis.feature.type.AttributeDescriptor;
 import org.opengis.feature.type.Name;
+
+import javax.print.Doc;
 
 /** @author tkunicki@boundlessgeo.com */
 public class MongoInferredMapper extends AbstractCollectionMapper {
@@ -77,24 +84,24 @@ public class MongoInferredMapper extends AbstractCollectionMapper {
     }
 
     @Override
-    public Geometry getGeometry(DBObject dbo) {
+    public Geometry getGeometry(Document dbo) {
         Object o = MongoUtil.getDBOValue(dbo, getGeometryPath());
         // TODO legacy coordinate pair
-        return o == null ? null : geomBuilder.toGeometry((DBObject) o);
+        return o == null ? null : geomBuilder.toGeometry(((Document) o).toBsonDocument(BsonDocument.class,MongoUtil.registry));
     }
 
     @Override
-    public DBObject toObject(Geometry g) {
-        return geomBuilder.toObject(g);
+    public Document toDocument(Geometry g) {
+        return MongoUtil.toDocument(geomBuilder.toBsonDocument(g));
     }
 
     @Override
-    public void setGeometry(DBObject dbo, Geometry g) {
-        MongoUtil.setDBOValue(dbo, getGeometryPath(), toObject(g));
+    public void setGeometry(Document dbo, Geometry g) {
+        MongoUtil.setDBOValue(dbo, getGeometryPath(), toDocument(g));
     }
 
     @Override
-    public SimpleFeatureType buildFeatureType(Name name, DBCollection collection) {
+    public SimpleFeatureType buildFeatureType(Name name, MongoCollection<Document> collection) {
 
         Set<String> indexedGeometries = MongoUtil.findIndexedGeometries(collection);
         Set<String> indexedFields = MongoUtil.findIndexedFields(collection);
@@ -103,7 +110,7 @@ public class MongoInferredMapper extends AbstractCollectionMapper {
         // first object as default.
         Map<String, Class> mappedFields =
                 schemainitParams.getIds().isEmpty() && schemainitParams.getMaxObjects() == 1
-                        ? MongoComplexUtilities.findMappings(collection.findOne())
+                        ? MongoComplexUtilities.findMappings(collection.find().first())
                         : generateMappedFields(collection);
 
         // don't need to worry about indexed properties we've found in our scan...
@@ -121,7 +128,7 @@ public class MongoInferredMapper extends AbstractCollectionMapper {
         }
 
         // Examine the DBO and remove any invalid indexed fields (such as arrays)
-        DBObject dbo = collection.findOne();
+        Document dbo = collection.find().first();
         if (dbo != null) {
             Iterator<String> indexedIterator = indexedFields.iterator();
             while (indexedIterator.hasNext()) {
@@ -141,7 +148,7 @@ public class MongoInferredMapper extends AbstractCollectionMapper {
             LOG.log(
                     Level.WARNING,
                     "More than one indexed geometry field found for type {0}, selecting {1} (first one encountered with index search of collection {2})",
-                    new Object[] {name, geometryField, collection.getFullName()});
+                    new Object[] {name, geometryField, collection.getNamespace().getFullName()});
         }
         ftBuilder.userData(MongoDataStore.KEY_mapping, geometryField);
         ftBuilder.userData(MongoDataStore.KEY_encoding, "GeoJSON");
@@ -149,7 +156,7 @@ public class MongoInferredMapper extends AbstractCollectionMapper {
         LOG.log(
                 Level.INFO,
                 "building type {0}: mapping geometry field {1} from collection {2}",
-                new Object[] {name, geometryField, collection.getFullName()});
+                new Object[] {name, geometryField, collection.getNamespace().getFullName()});
 
         for (Map.Entry<String, Class> mappedField : mappedFields.entrySet()) {
             String field = mappedField.getKey();
@@ -159,7 +166,7 @@ public class MongoInferredMapper extends AbstractCollectionMapper {
             LOG.log(
                     Level.INFO,
                     "building type \"{0}\": mapping field \"{1}\" with binding {2} from collection {3}",
-                    new Object[] {name, field, binding.getName(), collection.getFullName()});
+                    new Object[] {name, field, binding.getName(), collection.getNamespace().getFullName()});
         }
 
         for (String field : indexedFields) {
@@ -168,35 +175,35 @@ public class MongoInferredMapper extends AbstractCollectionMapper {
             LOG.log(
                     Level.INFO,
                     "building type \"{0}\": mapping indexed field \"{1}\" with default binding, {2}, from collection {3}",
-                    new Object[] {name, field, String.class.getName(), collection.getFullName()});
+                    new Object[] {name, field, String.class.getName(), collection.getNamespace().getFullName()});
         }
 
         SimpleFeatureType featureType = ftBuilder.buildFeatureType();
-        featureType.getUserData().put(MongoDataStore.KEY_collection, collection.getName());
+        featureType.getUserData().put(MongoDataStore.KEY_collection, collection.getNamespace().getFullName());
 
         this.schema = featureType;
 
         return featureType;
     }
 
-    private Map<String, Class> generateMappedFields(DBCollection collection) {
+    private Map<String, Class> generateMappedFields(MongoCollection<Document> collection) {
         final Map<String, Class> resultMap = new HashMap<>();
         @SuppressWarnings("PMD.CloseResource") // closed in findMappings
-        final DBCursor idsCursor = obtainCursorByIds(collection);
+        final MongoCursor idsCursor = obtainCursorByIds(collection);
         Map<String, Class> idsMappings =
                 idsCursor != null
                         ? MongoComplexUtilities.findMappings(idsCursor)
                         : Collections.emptyMap();
         int max = schemainitParams.getMaxObjects() - idsMappings.size();
         @SuppressWarnings("PMD.CloseResource") // closed in findMappings
-        final DBCursor maxObjectsCursor = obtainCursorByMaxObjects(collection, max);
+        final MongoCursor maxObjectsCursor = obtainCursorByMaxObjects(collection, max);
         if (maxObjectsCursor != null)
             resultMap.putAll(MongoComplexUtilities.findMappings(maxObjectsCursor));
         if (!idsMappings.isEmpty()) resultMap.putAll(idsMappings);
         return resultMap;
     }
 
-    private DBCursor obtainCursorByIds(DBCollection collection) {
+    private MongoCursor<Document> obtainCursorByIds(MongoCollection<Document> collection) {
         List<String> ids = schemainitParams.getIds();
         if (!ids.isEmpty()) {
             LOG.info("Using IDs list for schema generation.");
@@ -208,18 +215,18 @@ public class MongoInferredMapper extends AbstractCollectionMapper {
         }
     }
 
-    private DBCursor queryByIds(DBCollection collection, List<String> ids) {
+    private MongoCursor<Document> queryByIds(MongoCollection<Document> collection, List<String> ids) {
         List<ObjectId> oidList =
                 ids.stream().map(id -> new ObjectId(id)).collect(Collectors.toList());
-        DBObject query = QueryBuilder.start("_id").in(oidList.toArray(new ObjectId[] {})).get();
+        Bson query = Filters.in("_id",oidList.toArray(new ObjectId[] {}));
         LOG.log(Level.INFO, "IDs query for execute: {0}", query);
-        return collection.find(query);
+        return collection.find(query).cursor();
     }
 
-    private void logIdsOnCursor(DBCursor cursor, List<String> ids) {
+    private void logIdsOnCursor(MongoCursor<Document> cursor, List<String> ids) {
         final Set<String> idsOnCursor = new HashSet<>();
         try {
-            cursor.forEach(
+            cursor.forEachRemaining(
                     dbo -> {
                         ObjectId oid = (ObjectId) dbo.get("_id");
                         idsOnCursor.add(oid.toHexString());
@@ -235,16 +242,16 @@ public class MongoInferredMapper extends AbstractCollectionMapper {
         }
     }
 
-    private DBCursor obtainCursorByMaxObjects(DBCollection collection, int maxObects) {
+    private MongoCursor<Document> obtainCursorByMaxObjects(MongoCollection<Document> collection, int maxObects) {
         // if configured max object is -1, we should use all collection
         if (schemainitParams.getMaxObjects() == -1) {
             LOG.info("Using all collection objects for schema generation.");
-            return collection.find();
+            return collection.find().cursor();
         } else if (maxObects > 0) {
             LOG.info("Using objects max num for schema generation.");
             // else use max num of objects
             LOG.log(Level.INFO, "Max objects limit: {0}", schemainitParams.getMaxObjects());
-            return collection.find().limit(maxObects);
+            return collection.find().limit(maxObects).cursor();
         } else {
             return null;
         }

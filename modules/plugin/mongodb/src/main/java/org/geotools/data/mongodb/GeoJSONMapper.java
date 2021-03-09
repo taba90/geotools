@@ -19,9 +19,11 @@ package org.geotools.data.mongodb;
 
 import static org.geotools.data.mongodb.MongoDataStore.KEY_collection;
 
-import com.mongodb.DBCollection;
-import com.mongodb.DBObject;
 import java.util.logging.Logger;
+
+import com.mongodb.client.MongoCollection;
+import org.bson.BsonDocument;
+import org.bson.Document;
 import org.geotools.feature.simple.SimpleFeatureTypeBuilder;
 import org.geotools.referencing.crs.DefaultGeographicCRS;
 import org.geotools.util.logging.Logging;
@@ -51,22 +53,23 @@ public class GeoJSONMapper extends AbstractCollectionMapper {
     }
 
     @Override
-    public Geometry getGeometry(DBObject obj) {
-        return geomBuilder.toGeometry((DBObject) obj.get("geometry"));
+    public Geometry getGeometry(Document obj) {
+        BsonDocument geomBson=((Document)obj.get("geometry")).toBsonDocument(BsonDocument.class, MongoUtil.registry);
+        return geomBuilder.toGeometry(geomBson);
     }
 
     @Override
-    public DBObject toObject(Geometry g) {
-        return geomBuilder.toObject(g);
+    public Document toDocument(Geometry g) {
+        return MongoUtil.toDocument(geomBuilder.toBsonDocument(g));
     }
 
     @Override
-    public void setGeometry(DBObject obj, Geometry g) {
-        obj.put("geometry", toObject(g));
+    public void setGeometry(Document obj, Geometry g) {
+        obj.put("geometry", toDocument(g));
     }
 
     @Override
-    public SimpleFeatureType buildFeatureType(Name name, DBCollection collection) {
+    public SimpleFeatureType buildFeatureType(Name name, MongoCollection<Document> collection) {
 
         SimpleFeatureTypeBuilder ftBuilder = new SimpleFeatureTypeBuilder();
 
@@ -75,9 +78,9 @@ public class GeoJSONMapper extends AbstractCollectionMapper {
         ftBuilder.userData(MongoDataStore.KEY_encoding, "GeoJSON");
         ftBuilder.add("geometry", Geometry.class, DefaultGeographicCRS.WGS84);
 
-        DBObject rootDBO = collection.findOne();
-        if (rootDBO != null && rootDBO.containsField("properties")) {
-            DBObject propertiesDBO = (DBObject) rootDBO.get("properties");
+        Document rootDBO = collection.find().first();
+        if (rootDBO != null && rootDBO.containsKey("properties")) {
+            Document propertiesDBO = (Document) rootDBO.get("properties");
             for (String key : propertiesDBO.keySet()) {
                 Object v = propertiesDBO.get(key);
                 Class<?> binding = MongoUtil.mapBSONObjectToJavaType(v);

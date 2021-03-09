@@ -17,21 +17,26 @@
  */
 package org.geotools.data.mongodb;
 
-import com.mongodb.DBCursor;
 import com.mongodb.DBObject;
 import java.io.IOException;
 import java.util.NoSuchElementException;
+
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
+import org.bson.Document;
 import org.geotools.data.simple.SimpleFeatureReader;
 import org.opengis.feature.simple.SimpleFeature;
 import org.opengis.feature.simple.SimpleFeatureType;
 
+import javax.print.Doc;
+
 public class MongoFeatureReader implements SimpleFeatureReader {
 
-    DBCursor cursor;
+    MongoCursor<Document> cursor;
     MongoFeatureSource featureSource;
     CollectionMapper mapper;
 
-    public MongoFeatureReader(DBCursor cursor, MongoFeatureSource featureSource) {
+    public MongoFeatureReader(MongoCursor<Document> cursor, MongoFeatureSource featureSource) {
         this.cursor = cursor;
         this.featureSource = featureSource;
         mapper = featureSource.getMapper();
@@ -50,7 +55,7 @@ public class MongoFeatureReader implements SimpleFeatureReader {
     @Override
     public SimpleFeature next()
             throws IOException, IllegalArgumentException, NoSuchElementException {
-        DBObject obj = cursor.next();
+        Document obj = cursor.next();
 
         return mapper.buildFeature(obj, featureSource.getSchema());
     }

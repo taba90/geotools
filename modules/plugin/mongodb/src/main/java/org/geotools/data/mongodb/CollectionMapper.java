@@ -17,12 +17,15 @@
  */
 package org.geotools.data.mongodb;
 
-import com.mongodb.DBCollection;
 import com.mongodb.DBObject;
+import com.mongodb.client.MongoCollection;
+import org.bson.Document;
 import org.locationtech.jts.geom.Geometry;
 import org.opengis.feature.simple.SimpleFeature;
 import org.opengis.feature.simple.SimpleFeatureType;
 import org.opengis.feature.type.Name;
+
+import javax.print.Doc;
 
 /**
  * A strategy for mapping a mongo collection to a feature.
@@ -31,17 +34,17 @@ import org.opengis.feature.type.Name;
  */
 public interface CollectionMapper {
 
-    Geometry getGeometry(DBObject obj);
+    Geometry getGeometry(Document obj);
 
-    void setGeometry(DBObject obj, Geometry g);
+    void setGeometry(Document obj, Geometry g);
 
-    DBObject toObject(Geometry g);
+    Document toDocument(Geometry g);
 
     String getGeometryPath();
 
     String getPropertyPath(String property);
 
-    SimpleFeatureType buildFeatureType(Name name, DBCollection collection);
+    SimpleFeatureType buildFeatureType(Name name, MongoCollection<Document> collection);
 
-    SimpleFeature buildFeature(DBObject obj, SimpleFeatureType featureType);
+    SimpleFeature buildFeature(Document obj, SimpleFeatureType featureType);
 }

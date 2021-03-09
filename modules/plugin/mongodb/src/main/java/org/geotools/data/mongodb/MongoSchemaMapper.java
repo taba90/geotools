@@ -17,12 +17,16 @@
  */
 package org.geotools.data.mongodb;
 
-import com.mongodb.DBCollection;
 import com.mongodb.DBObject;
+import com.mongodb.client.MongoCollection;
+import org.bson.BsonDocument;
+import org.bson.Document;
 import org.locationtech.jts.geom.Geometry;
 import org.opengis.feature.simple.SimpleFeatureType;
 import org.opengis.feature.type.AttributeDescriptor;
 import org.opengis.feature.type.Name;
+
+import javax.print.Doc;
 
 /** @author tkunicki@boundlessgeo.com */
 public class MongoSchemaMapper extends AbstractCollectionMapper {
@@ -50,24 +54,24 @@ public class MongoSchemaMapper extends AbstractCollectionMapper {
     }
 
     @Override
-    public Geometry getGeometry(DBObject dbo) {
+    public Geometry getGeometry(Document dbo) {
         Object o = MongoUtil.getDBOValue(dbo, getGeometryPath());
         // TODO legacy coordinate pair
-        return o == null ? null : geomBuilder.toGeometry((DBObject) o);
+        return o == null ? null : geomBuilder.toGeometry(((Document) o).toBsonDocument(BsonDocument.class,MongoUtil.registry));
     }
 
     @Override
-    public DBObject toObject(Geometry g) {
-        return geomBuilder.toObject(g);
+    public Document toDocument(Geometry g) {
+        return MongoUtil.toDocument(geomBuilder.toBsonDocument(g));
     }
 
     @Override
-    public void setGeometry(DBObject dbo, Geometry g) {
-        MongoUtil.setDBOValue(dbo, getGeometryPath(), toObject(g));
+    public void setGeometry(Document dbo, Geometry g) {
+        MongoUtil.setDBOValue(dbo, getGeometryPath(), toDocument(g));
     }
 
     @Override
-    public SimpleFeatureType buildFeatureType(Name name, DBCollection collection) {
+    public SimpleFeatureType buildFeatureType(Name name, MongoCollection<Document> collection) {
         return schema;
     }
 }

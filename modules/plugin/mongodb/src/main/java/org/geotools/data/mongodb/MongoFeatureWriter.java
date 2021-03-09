@@ -18,22 +18,24 @@
 package org.geotools.data.mongodb;
 
 import com.mongodb.BasicDBObject;
-import com.mongodb.DBCollection;
 import java.io.IOException;
+
+import com.mongodb.client.MongoCollection;
+import org.bson.Document;
 import org.geotools.data.simple.SimpleFeatureWriter;
 import org.opengis.feature.simple.SimpleFeature;
 import org.opengis.feature.simple.SimpleFeatureType;
 
 public class MongoFeatureWriter implements SimpleFeatureWriter {
 
-    private final DBCollection collection;
+    private final MongoCollection<Document> collection;
     private final SimpleFeatureType featureType;
 
     private final CollectionMapper mapper;
     private MongoDBObjectFeature current;
 
     public MongoFeatureWriter(
-            DBCollection collection,
+            MongoCollection<Document> collection,
             SimpleFeatureType featureType,
             MongoFeatureStore featureStore) {
         this.collection = collection;
@@ -53,7 +55,7 @@ public class MongoFeatureWriter implements SimpleFeatureWriter {
 
     @Override
     public SimpleFeature next() throws IOException {
-        return current = new MongoDBObjectFeature(new BasicDBObject(), featureType, mapper);
+        return current = new MongoDBObjectFeature(new Document(), featureType, mapper);
     }
 
     @Override
@@ -61,7 +63,7 @@ public class MongoFeatureWriter implements SimpleFeatureWriter {
         if (current == null) {
             throw new IllegalStateException("No current feature, must call next() before write()");
         }
-        collection.save(current.getObject());
+        collection.insertOne(current.getObject());
     }
 
     @Override

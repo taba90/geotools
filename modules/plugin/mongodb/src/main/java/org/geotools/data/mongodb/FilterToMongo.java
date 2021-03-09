@@ -17,12 +17,11 @@
  */
 package org.geotools.data.mongodb;
 
+import static org.geotools.data.mongodb.MongoUtil.toDocument;
 import static org.geotools.util.Converters.convert;
 
-import com.mongodb.BasicDBList;
 import com.mongodb.BasicDBObject;
 import com.mongodb.BasicDBObjectBuilder;
-import com.mongodb.DBObject;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -30,6 +29,13 @@ import java.util.Date;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
+
+import com.mongodb.MongoClientSettings;
+import org.bson.BsonDocument;
+import org.bson.Document;
+import org.bson.codecs.Codec;
+import org.bson.codecs.DecoderContext;
+import org.bson.codecs.configuration.CodecRegistry;
 import org.bson.types.ObjectId;
 import org.geotools.data.mongodb.complex.JsonSelectAllFunction;
 import org.geotools.data.mongodb.complex.JsonSelectFunction;
@@ -110,6 +116,7 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
 
     final MongoGeometryBuilder geometryBuilder;
 
+
     /** The schmema the encoder will use as reference to drive filter encoding */
     SimpleFeatureType featureType;
 
@@ -125,11 +132,11 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
         this.geometryBuilder = geometryBuilder;
     }
 
-    protected BasicDBObject asDBObject(Object extraData) {
-        if (extraData instanceof BasicDBObject) {
-            return (BasicDBObject) extraData;
+    protected Document asDocument(Object extraData) {
+        if (extraData instanceof Document) {
+            return (Document) extraData;
         }
-        return new BasicDBObject();
+        return new Document();
     }
 
     /**
@@ -166,7 +173,7 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
 
     @Override
     public Object visit(ExcludeFilter filter, Object extraData) {
-        BasicDBObject output = asDBObject(extraData);
+        Document output = asDocument(extraData);
         output.put("foo", "not_likely_to_exist");
         return output;
     }
@@ -174,7 +181,7 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
     // An empty object should be an "all" query
     @Override
     public Object visit(IncludeFilter filter, Object extraData) {
-        return new BasicDBObject();
+        return new Document();
     }
 
     //
@@ -183,12 +190,12 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
 
     @Override
     public Object visit(And filter, Object extraData) {
-        BasicDBObject output = asDBObject(extraData);
+        Document output = asDocument(extraData);
         List<Filter> children = filter.getChildren();
-        BasicDBList andList = new BasicDBList();
+        List<Document> andList = new ArrayList<>();
         if (children != null) {
             for (Filter child : children) {
-                BasicDBObject item = (BasicDBObject) child.accept(this, null);
+                Document item = (Document) child.accept(this, null);
                 andList.add(item);
             }
             output.put("$and", andList);
@@ -199,12 +206,12 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
 
     @Override
     public Object visit(Or filter, Object extraData) {
-        BasicDBObject output = asDBObject(extraData);
+        Document output = asDocument(extraData);
         List<Filter> children = filter.getChildren();
-        BasicDBList orList = new BasicDBList();
+        List<Document> orList = new ArrayList<>();
         if (children != null) {
             for (Filter child : children) {
-                BasicDBObject item = (BasicDBObject) child.accept(this, null);
+                Document item = (Document) child.accept(this, null);
                 orList.add(item);
             }
             output.put("$or", orList);
@@ -214,7 +221,7 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
 
     @Override
     public Object visit(Not filter, Object extraData) {
-        BasicDBObject output = asDBObject(extraData);
+        Document output = asDocument(extraData);
         // in case of a not operator we cannot simply wrap the child filter
         // with a $not since mongo syntax is {property:{$not:{operator-expression}}}
         // thus using a Visitor to find the PropertyName
@@ -239,15 +246,15 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
         filter.getFilter().accept(finder, null);
         PropertyName pn = finder.getPropertyName();
         // gets child filter as it is
-        BasicDBObject expr = (BasicDBObject) filter.getFilter().accept(this, null);
-        BasicDBObject dbObject;
+        Document expr = (Document) filter.getFilter().accept(this, null);
+        Document document;
         if (pn != null) {
             String strPn = mapper.getPropertyPath(pn.getPropertyName());
             // get only the operator expression
             Object exprValue = expr.get(strPn);
-            dbObject = new BasicDBObject("$not", exprValue);
+            document = new Document("$not", exprValue);
             // move up the PropertyName
-            output.put(strPn, dbObject);
+            output.put(strPn, document);
         } else {
             // no PropertyName found throwing exception
             throw new UnsupportedOperationException(
@@ -261,16 +268,16 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
     //
     @Override
     public Object visit(PropertyIsBetween filter, Object extraData) {
-        BasicDBObject output = asDBObject(extraData);
+        Document output = asDocument(extraData);
 
         String propName = convert(filter.getExpression().accept(this, null), String.class);
         Object lower = filter.getLowerBoundary().accept(this, getValueType(filter.getExpression()));
         Object upper = filter.getUpperBoundary().accept(this, getValueType(filter.getExpression()));
 
-        BasicDBObject dbo = new BasicDBObject();
-        dbo.put("$gte", lower);
-        dbo.put("$lte", upper);
-        output.put(propName, dbo);
+        Document document = new Document();
+        document.put("$gte", lower);
+        document.put("$lte", upper);
+        output.put(propName, document);
 
         return output;
     }
@@ -280,9 +287,9 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
         return encodeBinaryComparisonOp(filter, "$eq", extraData);
     }
 
-    BasicDBObject encodeBinaryComparisonOp(
+    Document encodeBinaryComparisonOp(
             BinaryComparisonOperator filter, String op, Object extraData) {
-        BasicDBObject output = asDBObject(extraData);
+        Document output = asDocument(extraData);
 
         Expression left = filter.getExpression1();
         Expression right = filter.getExpression2();
@@ -297,7 +304,7 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
             rightValue = tmp;
         }
 
-        output.put((String) leftValue, op == null ? rightValue : new BasicDBObject(op, rightValue));
+        output.put((String) leftValue, op == null ? rightValue : new Document(op, rightValue));
         return output;
     }
 
@@ -387,7 +394,7 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
      */
     @Override
     public Object visit(PropertyIsLike filter, Object extraData) {
-        BasicDBObject output = asDBObject(extraData);
+        Document output = asDocument(extraData);
         Expression filterExpression = filter.getExpression();
         // Mongo's $regex operator only works on fields
         if (!(filterExpression instanceof PropertyName)) {
@@ -411,11 +418,11 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
 
     @Override
     public Object visit(PropertyIsNull filter, Object extraData) {
-        BasicDBObject output = asDBObject(extraData);
+        Document output = asDocument(extraData);
         String prop = convert(filter.getExpression().accept(this, null), String.class);
         // $eq matches either contain the item field whose value is null
         // or that do not contain the field
-        BasicDBObject propIsNull = new BasicDBObject();
+        Document propIsNull = new Document();
         propIsNull.put("$eq", null);
         output.put(prop, propIsNull);
         return output;
@@ -423,7 +430,7 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
 
     @Override
     public Object visit(Id filter, Object extraData) {
-        BasicDBObject output = asDBObject(extraData);
+        Document output = asDocument(extraData);
 
         Set<Identifier> ids = filter.getIdentifiers();
 
@@ -433,7 +440,7 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
         }
 
         Object objectIdDBO =
-                (objectIds.size() > 1) ? new BasicDBObject("$in", objectIds) : objectIds.get(0);
+                (objectIds.size() > 1) ? new Document("$in", objectIds) : objectIds.get(0);
 
         output.put("_id", objectIdDBO);
         return output;
@@ -444,7 +451,7 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
     //
     @Override
     public Object visit(BBOX filter, Object extraData) {
-        BasicDBObject output = asDBObject(extraData);
+        Document output = asDocument(extraData);
 
         // TODO: handle swapping of operands
         Object e1 = filter.getExpression1().accept(this, Geometry.class);
@@ -456,57 +463,44 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
             envelope = envelope.intersection(WORLD);
         }
 
-        DBObject geometryDBObject = geometryBuilder.toObject(envelope);
-        addCrsToGeometryDBObject(geometryDBObject);
-        DBObject dbo =
-                BasicDBObjectBuilder.start()
-                        .push("$geoIntersects")
-                        .add("$geometry", geometryDBObject)
-                        .get();
-
-        output.put((String) e1, dbo);
+        Document geomDoc = toDocument(geometryBuilder.toBsonDocument(envelope));
+        addCrsToGeometryDocument(geomDoc);
+        Document document = new Document("$geoIntersects",new Document("$geometry", geomDoc));
+        output.append((String) e1, document);
         return output;
     }
 
     @Override
     public Object visit(Intersects filter, Object extraData) {
 
-        BasicDBObject output = asDBObject(extraData);
+        Document output = asDocument(extraData);
 
         // TODO: handle swapping of operands
         Object e1 = filter.getExpression1().accept(this, Geometry.class);
 
         Geometry geometry = filter.getExpression2().evaluate(null, Geometry.class);
 
-        DBObject geometryDBObject = geometryBuilder.toObject(geometry);
-        addCrsToGeometryDBObject(geometryDBObject);
-        DBObject dbo =
-                BasicDBObjectBuilder.start()
-                        .push("$geoIntersects")
-                        .add("$geometry", geometryDBObject)
-                        .get();
-
-        output.put((String) e1, dbo);
+        Document geometryDoc = toDocument(geometryBuilder.toBsonDocument(geometry));
+        addCrsToGeometryDocument(geometryDoc);
+        Document intersects =
+                new Document("$geoIntersects",
+                        new Document("$geometry", geometryDoc));
+        output.append((String) e1, intersects);
         return output;
     }
 
     @Override
     public Object visit(Within filter, Object extraData) {
-        BasicDBObject output = asDBObject(extraData);
+        Document output = asDocument(extraData);
 
         // TODO: handle swapping of operands
         Object e1 = filter.getExpression1().accept(this, Geometry.class);
 
         Geometry geometry = filter.getExpression2().evaluate(null, Geometry.class);
 
-        DBObject geometryDBObject = geometryBuilder.toObject(geometry);
-        addCrsToGeometryDBObject(geometryDBObject);
-        DBObject dbo =
-                BasicDBObjectBuilder.start()
-                        .push("$geoWithin")
-                        .add("$geometry", geometryDBObject)
-                        .get();
-
+        Document geometryDoc = toDocument(geometryBuilder.toBsonDocument(geometry));
+        addCrsToGeometryDocument(geometryDoc);
+        Document dbo = new Document("$geoWithin",new Document("$geometry",geometryDoc));
         output.put((String) e1, dbo);
         return output;
     }
@@ -673,9 +667,9 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
 
     Object encodeLiteral(Object literal, Class<?> targetType) {
         if (literal instanceof Envelope) {
-            return geometryBuilder.toObject((Envelope) literal);
+            return toDocument(geometryBuilder.toBsonDocument((Envelope) literal));
         } else if (literal instanceof Geometry) {
-            return geometryBuilder.toObject((Geometry) literal);
+            return toDocument(geometryBuilder.toBsonDocument((Geometry) literal));
         } else if (literal instanceof Date) {
             if (targetType != null && Date.class.isAssignableFrom(targetType)) {
                 // return date object as is, will be correctly encoded by BasicDBObject
@@ -756,13 +750,11 @@ public class FilterToMongo implements FilterVisitor, ExpressionVisitor {
         return false;
     }
 
-    void addCrsToGeometryDBObject(DBObject geometryDBObject) {
+    void addCrsToGeometryDocument(Document geometryDBObject) {
         geometryDBObject.put(
                 "crs",
-                BasicDBObjectBuilder.start()
-                        .add("type", "name")
-                        .push("properties")
-                        .add("name", "urn:x-mongodb:crs:strictwinding:EPSG:4326")
-                        .get());
+                new Document().append("type", "name")
+                        .append("properties",new Document("name", "urn:x-mongodb:crs:strictwinding:EPSG:4326")));
     }
+
 }

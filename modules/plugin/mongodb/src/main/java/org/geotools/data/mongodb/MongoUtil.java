@@ -19,7 +19,6 @@ package org.geotools.data.mongodb;
 
 import com.mongodb.BasicDBList;
 import com.mongodb.BasicDBObject;
-import com.mongodb.DBCollection;
 import com.mongodb.DBObject;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -54,83 +53,110 @@ import java.util.logging.Logger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
 import java.util.zip.ZipFile;
+
+import com.mongodb.MongoClientSettings;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
+import org.bson.BsonDocument;
+import org.bson.Document;
+import org.bson.codecs.Codec;
+import org.bson.codecs.DecoderContext;
+import org.bson.codecs.configuration.CodecRegistry;
 import org.geotools.data.mongodb.data.SchemaStoreDirectory;
 import org.geotools.http.HTTPClient;
+import org.geotools.xml.xsi.XSISimpleTypes;
 import org.opengis.feature.simple.SimpleFeatureType;
 import org.opengis.feature.type.Name;
 
 /** @author tkunicki@boundlessgeo.com */
 public class MongoUtil {
 
-    public static Object getDBOValue(DBObject dbo, String path) {
+    public static final CodecRegistry registry= MongoClientSettings.getDefaultCodecRegistry();
+
+    public static Object getDBOValue(Document dbo, String path) {
         return getDBOValue(dbo, Arrays.asList(path.split("\\.")).iterator());
     }
 
-    public static Object getDBOValue(DBObject dbo, Iterator<String> path) {
+    public static Object getDBOValue(Document dbo, Iterator<String> path) {
         return getDBOValueInternal(path, dbo);
     }
 
     private static Object getDBOValueInternal(Iterator<String> path, Object current) {
         if (path.hasNext()) {
-            if (current instanceof DBObject) {
+            Object value=null;
+            if (current instanceof Document) {
                 String key = path.next();
-                // If we are in an array, key must be an int
-                if (current instanceof BasicDBList) {
-                    try {
-                        Integer.parseInt(key);
-                    } catch (NumberFormatException e) {
-                        return null;
-                    }
+                value= ((Document)current).get(key);
+            } else if (current instanceof List) {
+                String key = path.next();
+                try {
+                    int intKey=Integer.parseInt(key);
+                    value=((List)current).get(intKey);
+                } catch (NumberFormatException e) {
+                    return null;
                 }
-                Object value = ((DBObject) current).get(key);
-                return getDBOValueInternal(path, value);
             }
+            if (value!=null) return getDBOValueInternal(path, value);
             return null;
         } else {
             return current;
         }
     }
 
-    public static void setDBOValue(DBObject dbo, String path, Object value) {
+    public static void setDBOValue(Document dbo, String path, Object value) {
         setDBOValue(dbo, Arrays.asList(path.split("\\.")).iterator(), value);
     }
 
-    public static void setDBOValue(DBObject dbo, Iterator<String> path, Object value) {
-        setDBOValueInternal(dbo, path, value);
+    public static void setDBOValue(Document document, Iterator<String> path, Object value) {
+        setDBOValueInternal(document, path, value);
     }
 
     private static void setDBOValueInternal(
-            DBObject currentDBO, Iterator<String> path, Object value) {
+            Object currentDBO, Iterator<String> path, Object value) {
         String key = path.next();
         if (path.hasNext()) {
-            Object next = currentDBO.get(key);
-            DBObject nextDBO;
-            if (next instanceof DBObject) {
-                nextDBO = (DBObject) next;
+            Object next=null;
+            if (currentDBO instanceof Document){
+                Document document=(Document) currentDBO;
+                next=document.get(key);
+            } else if (currentDBO instanceof List<?>){
+                Object firstElement=((List<?>)currentDBO).get(0);
+                if (firstElement instanceof Document){
+                    Integer index=Integer.parseInt(key);
+                    next=((List<?>)currentDBO).get(index);
+                }
+            }
+            if (next==null){
+                next=currentDBO;
+            }
+            Object nextDBO;
+            if (next instanceof Document) {
+                nextDBO = next;
             } else {
-                currentDBO.put(key, nextDBO = new BasicDBObject());
+                ((Document)currentDBO).put(key, nextDBO = new Document());
             }
             setDBOValueInternal(nextDBO, path, value);
         } else {
-            currentDBO.put(key, value);
+            ((Document)currentDBO).put(key, value);
         }
     }
 
-    public static Set<String> findIndexedGeometries(DBCollection dbc) {
+    public static Set<String> findIndexedGeometries(MongoCollection<Document> dbc) {
         return findIndexedFields(dbc, "2dsphere");
     }
 
-    public static Set<String> findIndexedFields(DBCollection dbc) {
+    public static Set<String> findIndexedFields(MongoCollection<Document> dbc) {
         return findIndexedFields(dbc, null);
     }
 
-    public static Set<String> findIndexedFields(DBCollection dbc, String type) {
+    public static Set<String> findIndexedFields(MongoCollection<Document> dbc, String type) {
         Set<String> fields = new LinkedHashSet<>();
-        List<DBObject> indices = dbc.getIndexInfo();
-        for (DBObject index : indices) {
-            Object key = index.get("key");
-            if (key instanceof DBObject) {
-                for (Map.Entry<?, ?> entry : ((Map<?, ?>) ((DBObject) key).toMap()).entrySet()) {
+        MongoCursor<Document> indices = dbc.listIndexes().iterator();
+        while(indices.hasNext()) {
+            Document index = indices.next();
+            Object key=index.get("key");
+            if (key instanceof Document) {
+                for (Map.Entry<?, ?> entry : (((Document) key).entrySet())) {
                     if (type == null || type.equals(entry.getValue())) {
                         fields.add(entry.getKey().toString());
                     }
@@ -141,36 +167,33 @@ public class MongoUtil {
         return fields;
     }
 
-    public static Map<String, Class<?>> findMappableFields(DBCollection dbc) {
-        return findMappableFields(dbc.findOne());
+    public static Map<String, Class<?>> findMappableFields(MongoCollection<Document> collection) {
+        return findMappableFields(collection.find().first());
     }
 
-    public static Map<String, Class<?>> findMappableFields(DBObject dbo) {
-        if (dbo == null) {
+    public static Map<String, Class<?>> findMappableFields(Document document) {
+        if (document == null) {
             return Collections.emptyMap();
         }
-        Map<String, Class<?>> map = doFindMappableFields(dbo);
+        Map<String, Class<?>> map = doFindMappableFields(document);
         map.remove("_id");
         return map;
     }
 
-    private static Map<String, Class<?>> doFindMappableFields(DBObject dbo) {
-        if (dbo == null) {
+    private static Map<String, Class<?>> doFindMappableFields(Document doc) {
+        if (doc == null) {
             return Collections.emptyMap();
         }
         Map<String, Class<?>> map = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> e : ((Map<?, ?>) dbo.toMap()).entrySet()) {
+        for (Map.Entry<String, Object> e : doc.entrySet()) {
             Object k = e.getKey();
             if (k instanceof String) {
                 String field = (String) k;
                 Object v = e.getValue();
-                if (v instanceof DBObject) {
-                    // No list support
-                    if (!(v instanceof BasicDBList)) {
-                        for (Map.Entry<String, Class<?>> childEntry :
-                                doFindMappableFields((DBObject) v).entrySet()) {
+                if (v instanceof Document) {
+                    for (Map.Entry<String, Class<?>> childEntry :
+                            doFindMappableFields((Document) v).entrySet()) {
                             map.put(field + "." + childEntry.getKey(), childEntry.getValue());
-                        }
                     }
                 } else if (!(v instanceof List)) {
                     // this is here as documentation/placeholder.  no array/list support yet.
@@ -250,7 +273,7 @@ public class MongoUtil {
                 jsonBuilder.append(line);
                 jsonBuilder.append(lineSeparator);
             }
-            BasicDBObject o = BasicDBObject.parse(jsonBuilder.toString());
+            Document o = Document.parse(jsonBuilder.toString());
             return FeatureTypeDBObject.convert(o, name);
         } finally {
             reader.close();
@@ -372,5 +395,10 @@ public class MongoUtil {
         public File getLastDirectory() {
             return lastDirectory;
         }
+    }
+
+    public static Document toDocument (BsonDocument bsonDocument){
+        Codec<Document> codec=registry.get(Document.class);
+        return codec.decode(bsonDocument.asBsonReader(), DecoderContext.builder().build());
     }
 }

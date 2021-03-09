@@ -17,11 +17,7 @@
  */
 package org.geotools.data.mongodb;
 
-import com.mongodb.BasicDBObject;
-import com.mongodb.DB;
-import com.mongodb.DBCollection;
-import com.mongodb.MongoClient;
-import com.mongodb.MongoClientURI;
+import com.mongodb.ConnectionString;
 import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
@@ -36,6 +32,12 @@ import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.StreamSupport;
+
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.model.CreateCollectionOptions;
 import org.bson.BsonDocument;
 import org.bson.BsonString;
 import org.bson.Document;
@@ -82,7 +84,7 @@ public class MongoDataStore extends ContentDataStore {
     final MongoSchemaStore schemaStore;
 
     final MongoClient dataStoreClient;
-    final DB dataStoreDB;
+    final MongoDatabase dataStoreDB;
 
     final boolean deactivateOrNativeFilter;
 
@@ -124,19 +126,13 @@ public class MongoDataStore extends ContentDataStore {
             MongoSchemaInitParams schemaInitParams,
             HTTPClient httpClient) {
 
-        MongoClientURI dataStoreClientURI = createMongoClientURI(dataStoreURI);
-        dataStoreClient = createMongoClient(dataStoreClientURI);
-        dataStoreDB =
-                createDB(
-                        dataStoreClient, dataStoreClientURI.getDatabase(), !createDatabaseIfNeeded);
+        ConnectionString dataStoreClientURI = createConnectionString(dataStoreURI);
+        String database=dataStoreClientURI.getDatabase();
+        dataStoreClient = MongoClients.create(dataStoreClientURI);
 
-        if (dataStoreDB == null) {
-            dataStoreClient.close(); // This smells bad...
-            throw new IllegalArgumentException(
-                    "Unknown mongodb database, \"" + dataStoreClientURI.getDatabase() + "\"");
-        }
+        dataStoreDB=createDB(dataStoreClient,database,!createDatabaseIfNeeded);
 
-        this.deactivateOrNativeFilter = isMongoVersionLessThan2_6(dataStoreClientURI);
+        this.deactivateOrNativeFilter = isMongoVersionLessThan2_6();
         this.httpClient = httpClient;
         schemaStore = createSchemaStore(schemaStoreURI);
         if (schemaStore == null) {
@@ -156,16 +152,12 @@ public class MongoDataStore extends ContentDataStore {
      *
      * @return true if version less than 2.6.0 is found, otherwise false.
      */
-    private boolean isMongoVersionLessThan2_6(MongoClientURI dataStoreClientURI) {
+    private boolean isMongoVersionLessThan2_6() {
         boolean deactivateOrAux = false;
         // check server version
-        if (dataStoreClient != null
-                && dataStoreClientURI != null
-                && dataStoreClientURI.getDatabase() != null) {
+        if (dataStoreDB != null) {
             Document result =
-                    dataStoreClient
-                            .getDatabase(dataStoreClientURI.getDatabase())
-                            .runCommand(new BsonDocument("buildinfo", new BsonString("")));
+                    dataStoreDB.runCommand(new BsonDocument("buildinfo", new BsonString("")));
             if (result.containsKey("versionArray")) {
                 @SuppressWarnings("unchecked")
                 List<Integer> versionArray = (List) result.get("versionArray");
@@ -181,7 +173,7 @@ public class MongoDataStore extends ContentDataStore {
         return deactivateOrAux;
     }
 
-    final MongoClientURI createMongoClientURI(String dataStoreURI) {
+    final ConnectionString createConnectionString(String dataStoreURI) {
         if (dataStoreURI == null) {
             throw new IllegalArgumentException("dataStoreURI may not be null");
         }
@@ -191,24 +183,17 @@ public class MongoDataStore extends ContentDataStore {
                             + dataStoreURI
                             + "\"");
         }
-        return new MongoClientURI(dataStoreURI.toString());
+        return new ConnectionString(dataStoreURI);
     }
 
-    final MongoClient createMongoClient(MongoClientURI mongoClientURI) {
-        try {
-            return new MongoClient(mongoClientURI);
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Unknown mongodb host(s)", e);
+    final MongoDatabase createDB(MongoClient mongoClient, String databaseName, boolean databaseMustExist) {
+        MongoDatabase mongoDatabase=dataStoreClient.getDatabase(databaseName);
+        if(mongoDatabase==null && databaseMustExist){
+            dataStoreClient.close(); // This smells bad...
+            throw new IllegalArgumentException(
+                    "Unknown mongodb database, \"" + databaseName + "\"");
         }
-    }
-
-    final DB createDB(MongoClient mongoClient, String databaseName, boolean databaseMustExist) {
-        if (databaseMustExist
-                && !StreamSupport.stream(mongoClient.listDatabaseNames().spliterator(), false)
-                        .anyMatch(name -> databaseName.equalsIgnoreCase(name))) {
-            return null;
-        }
-        return mongoClient.getDB(databaseName);
+        return mongoClient.getDatabase(databaseName);
     }
 
     private synchronized MongoSchemaStore createSchemaStore(String schemaStoreURI) {
@@ -363,9 +348,8 @@ public class MongoDataStore extends ContentDataStore {
 
         // Collection needs to exist (with index) so that it's returned with createTypeNames()
         dataStoreDB
-                .createCollection(incoming.getTypeName(), new BasicDBObject())
-                .createIndex(new BasicDBObject(geometryMapping, "2dsphere"));
-
+                .createCollection(incoming.getTypeName(), new CreateCollectionOptions());
+        dataStoreDB.getCollection(incoming.getTypeName()).createIndex(new BsonDocument(geometryMapping,new BsonString("2dsphere")));
         // Store FeatureType instance since it can't be inferred (no documents)
         ContentEntry entry = entry(incoming.getName());
         ContentState state = entry.getState(null);
@@ -382,7 +366,8 @@ public class MongoDataStore extends ContentDataStore {
     @Override
     protected List<Name> createTypeNames() throws IOException {
 
-        Set<String> collectionNames = new LinkedHashSet<>(dataStoreDB.getCollectionNames());
+        Set<String> collectionNames = new LinkedHashSet<>();
+        dataStoreDB.listCollectionNames().iterator().forEachRemaining(collectionNames::add);
         Set<String> typeNameSet = new LinkedHashSet<>();
 
         for (String candidateTypeName : getSchemaStore().typeNames()) {
@@ -405,7 +390,7 @@ public class MongoDataStore extends ContentDataStore {
                                             .getUserData()
                                             .get(KEY_mapping);
                     if (geometryMapping != null) {
-                        DBCollection collection =
+                        MongoCollection<Document> collection =
                                 dataStoreDB.getCollection(candidateCollectionName);
                         Set<String> geometryIndices = MongoUtil.findIndexedGeometries(collection);
                         // verify geometry mapping is indexed...
@@ -419,7 +404,7 @@ public class MongoDataStore extends ContentDataStore {
                                         name(candidateTypeName),
                                         geometryName,
                                         geometryMapping,
-                                        collection.getFullName()
+                                        collection.getNamespace().getFullName()
                                     });
                         }
                     } else {
@@ -454,7 +439,7 @@ public class MongoDataStore extends ContentDataStore {
         for (String collectionName : collectionsToCheck) {
             // make sure it's not system collection
             if (!collectionName.startsWith("system.")) {
-                DBCollection collection = dataStoreDB.getCollection(collectionName);
+                MongoCollection<Document> collection = dataStoreDB.getCollection(collectionName);
                 Set<String> geometryIndexSet = MongoUtil.findIndexedGeometries(collection);
                 // verify collection has an indexed geometry property
                 if (!geometryIndexSet.isEmpty()) {
@@ -463,7 +448,7 @@ public class MongoDataStore extends ContentDataStore {
                     LOGGER.log(
                             Level.INFO,
                             "Ignoring collection \"{0}\", unable to find key with spatial index",
-                            new Object[] {collection.getFullName()});
+                            new Object[] {collection.getNamespace().getFullName()});
                 }
             }
         }

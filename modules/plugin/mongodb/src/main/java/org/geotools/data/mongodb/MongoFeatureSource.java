@@ -18,14 +18,20 @@
 package org.geotools.data.mongodb;
 
 import com.mongodb.BasicDBObject;
-import com.mongodb.DBCollection;
-import com.mongodb.DBCursor;
-import com.mongodb.DBObject;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import com.mongodb.client.FindIterable;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
+import com.mongodb.client.model.Projections;
+import org.bson.Document;
+import org.bson.conversions.Bson;
 import org.geotools.data.DataUtilities;
 import org.geotools.data.FeatureReader;
 import org.geotools.data.FilteringFeatureReader;
@@ -56,15 +62,17 @@ import org.opengis.filter.expression.PropertyName;
 import org.opengis.filter.sort.SortBy;
 import org.opengis.filter.sort.SortOrder;
 
+import javax.print.Doc;
+
 public class MongoFeatureSource extends ContentFeatureSource {
 
     static Logger LOG = Logging.getLogger(MongoFeatureSource.class);
 
-    final DBCollection collection;
+    final MongoCollection<Document> collection;
 
     CollectionMapper mapper;
 
-    public MongoFeatureSource(ContentEntry entry, Query query, DBCollection collection) {
+    public MongoFeatureSource(ContentEntry entry, Query query, MongoCollection<Document> collection) {
         super(entry, query);
         this.collection = collection;
         initMapper();
@@ -80,7 +88,7 @@ public class MongoFeatureSource extends ContentFeatureSource {
                                 getDataStore().getSchemaInitParams().orElse(null)));
     }
 
-    public DBCollection getCollection() {
+    public MongoCollection<Document> getCollection() {
         return collection;
     }
 
@@ -124,7 +132,7 @@ public class MongoFeatureSource extends ContentFeatureSource {
         Filter f = query.getFilter();
         if (isAll(f)) {
             LOG.fine("count(all)");
-            return (int) collection.count();
+            return (int) collection.countDocuments();
         }
 
         Filter[] split = splitFilter(f);
@@ -132,11 +140,11 @@ public class MongoFeatureSource extends ContentFeatureSource {
             return -1;
         }
 
-        DBObject q = toQuery(f);
+        Document q = toQuery(f);
         if (LOG.isLoggable(Level.FINE)) {
             LOG.fine("count(" + q + ")");
         }
-        return (int) collection.count(q);
+        return (int) collection.countDocuments(q);
     }
 
     @Override
@@ -147,7 +155,7 @@ public class MongoFeatureSource extends ContentFeatureSource {
         List<Filter> postFilterList = new ArrayList<>();
         List<String> postFilterAttributes = new ArrayList<>();
         @SuppressWarnings("PMD.CloseResource") // wrapped and returned
-        DBCursor cursor = toCursor(query, postFilterList, postFilterAttributes);
+        MongoCursor<Document> cursor = toCursor(query, postFilterList, postFilterAttributes);
         FeatureReader<SimpleFeatureType, SimpleFeature> r = new MongoFeatureReader(cursor, this);
 
         if (!postFilterList.isEmpty() && !isAll(postFilterList.get(0))) {
@@ -252,8 +260,8 @@ public class MongoFeatureSource extends ContentFeatureSource {
         return true;
     }
 
-    DBCursor toCursor(Query q, List<Filter> postFilter, List<String> postFilterAttrs) {
-        DBObject query = new BasicDBObject();
+    MongoCursor<Document> toCursor(Query q, List<Filter> postFilter, List<String> postFilterAttrs) {
+        Document query = new Document();
 
         Filter f = q.getFilter();
         if (!isAll(f)) {
@@ -264,41 +272,44 @@ public class MongoFeatureSource extends ContentFeatureSource {
             }
         }
 
-        DBCursor c;
+        FindIterable<Document> iterable;
+        List<Bson> keys = new ArrayList<>();
         if (q.getPropertyNames() != Query.ALL_NAMES) {
-            BasicDBObject keys = new BasicDBObject();
             for (String p : q.getPropertyNames()) {
-                keys.put(mapper.getPropertyPath(p), 1);
+                Bson projection=Projections.include(mapper.getPropertyPath(p));
+                keys.add(projection);
             }
             // add properties from post filters
             for (Filter filter : postFilter) {
                 String[] attributeNames = DataUtilities.attributeNames(filter);
                 for (String attrName : attributeNames) {
-                    if (attrName != null && !attrName.isEmpty() && !keys.containsField(attrName)) {
-                        keys.put(mapper.getPropertyPath(attrName), 1);
+                    Bson property=Projections.include(mapper.getPropertyPath(attrName));
+                    if (attrName != null && !attrName.isEmpty() && !keys.contains(property)) {
+                        keys.add(property);
                         postFilterAttrs.add(attrName);
                     }
                 }
             }
-            if (!keys.containsField(mapper.getGeometryPath())) {
-                keys.put(mapper.getGeometryPath(), 1);
+            Bson geomProperty=Projections.include(mapper.getGeometryPath());
+            if (!keys.contains(geomProperty)) {
+                keys.add(geomProperty);
             }
             if (LOG.isLoggable(Level.FINE)) {
                 LOG.fine(String.format("find(%s, %s)", query, keys));
             }
-            c = collection.find(query, keys);
+            iterable = collection.find(query).projection(Projections.fields(keys));
         } else {
             if (LOG.isLoggable(Level.FINE)) {
                 LOG.fine(String.format("find(%s)", query));
             }
-            c = collection.find(query);
+            iterable = collection.find(query);
         }
 
         if (q.getStartIndex() != null && q.getStartIndex() != 0) {
-            c = c.skip(q.getStartIndex());
+            iterable = iterable.skip(q.getStartIndex());
         }
         if (q.getMaxFeatures() != Integer.MAX_VALUE) {
-            c = c.limit(q.getMaxFeatures());
+            iterable = iterable.limit(q.getMaxFeatures());
         }
 
         if (q.getSortBy() != null) {
@@ -310,21 +321,21 @@ public class MongoFeatureSource extends ContentFeatureSource {
                     orderBy.append(property, sortBy.getSortOrder() == SortOrder.ASCENDING ? 1 : -1);
                 }
             }
-            c = c.sort(orderBy);
+            iterable = iterable.sort(orderBy);
         }
 
-        return c;
+        return iterable.cursor();
     }
 
-    DBObject toQuery(Filter f) {
+    Document toQuery(Filter f) {
         if (isAll(f)) {
-            return new BasicDBObject();
+            return new Document();
         }
 
         FilterToMongo v = new FilterToMongo(mapper);
         v.setFeatureType(getSchema());
 
-        return (DBObject) f.accept(v, null);
+        return (Document) f.accept(v, null);
     }
 
     boolean isAll(Filter f) {

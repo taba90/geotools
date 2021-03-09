@@ -23,6 +23,8 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import org.bson.Document;
 import org.geotools.feature.GeometryAttributeImpl;
 import org.geotools.feature.type.AttributeDescriptorImpl;
 import org.geotools.filter.identity.FeatureIdImpl;
@@ -46,19 +48,19 @@ import org.opengis.referencing.crs.CoordinateReferenceSystem;
 public class MongoDBObjectFeature implements SimpleFeature {
 
     private final SimpleFeatureType featureType;
-    private final DBObject featureDBO;
+    private final Document featureDBO;
     private final CollectionMapper mapper;
 
     private Map<Object, Object> userData;
 
     public MongoDBObjectFeature(
-            DBObject dbo, SimpleFeatureType featureType, CollectionMapper mapper) {
+            Document dbo, SimpleFeatureType featureType, CollectionMapper mapper) {
         this.featureDBO = dbo;
         this.featureType = featureType;
         this.mapper = mapper;
     }
 
-    public DBObject getObject() {
+    public Document getObject() {
         return featureDBO;
     }
 
@@ -107,7 +109,7 @@ public class MongoDBObjectFeature implements SimpleFeature {
     @Override
     public void setDefaultGeometry(Object geometry) {
         MongoUtil.setDBOValue(
-                featureDBO, mapper.getGeometryPath(), mapper.toObject((Geometry) geometry));
+                featureDBO, mapper.getGeometryPath(), mapper.toDocument((Geometry) geometry));
     }
 
     @Override
@@ -143,7 +145,7 @@ public class MongoDBObjectFeature implements SimpleFeature {
     private Object doGetAttribute(AttributeDescriptor d) throws IndexOutOfBoundsException {
         if (d instanceof GeometryDescriptor) {
             Object o = getDBOValue(mapper.getGeometryPath());
-            return o instanceof DBObject ? mapper.getGeometry((DBObject) o) : null;
+            return o instanceof DBObject ? mapper.getGeometry((Document) o) : null;
         }
         return getDBOValue(mapper.getPropertyPath(d.getLocalName()));
     }
@@ -151,7 +153,7 @@ public class MongoDBObjectFeature implements SimpleFeature {
     private void doSetAttribute(AttributeDescriptor d, Object o) {
         if (d instanceof GeometryDescriptor) {
             MongoUtil.setDBOValue(
-                    featureDBO, mapper.getGeometryPath(), mapper.toObject((Geometry) o));
+                    featureDBO, mapper.getGeometryPath(), mapper.toDocument((Geometry) o));
         } else {
             MongoUtil.setDBOValue(
                     featureDBO,

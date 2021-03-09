@@ -17,18 +17,31 @@
  */
 package org.geotools.data.mongodb;
 
-import com.mongodb.BasicDBObject;
-import com.mongodb.DB;
-import com.mongodb.DBCollection;
-import com.mongodb.DBCursor;
-import com.mongodb.DBObject;
-import com.mongodb.MongoClient;
-import com.mongodb.MongoClientURI;
+import com.mongodb.ConnectionString;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
+import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.model.UpdateOptions;
+import org.bson.BsonBoolean;
+import org.bson.BsonDocument;
+import org.bson.BsonInt64;
+import org.bson.BsonString;
+import org.bson.Document;
+import org.bson.conversions.Bson;
 import org.opengis.feature.simple.SimpleFeatureType;
 import org.opengis.feature.type.Name;
+import org.opengis.referencing.operation.Projection;
+
+import javax.print.Doc;
+
+import static com.mongodb.client.model.Projections.fields;
+import static com.mongodb.client.model.Projections.include;
 
 /** @author tkunicki@boundlessgeo.com */
 @SuppressWarnings("deprecation") // DB was replaced by MongoDatabase but API is not the same
@@ -38,41 +51,43 @@ public class MongoSchemaDBStore implements MongoSchemaStore {
     static final String DEFAULT_collectionName = "schemas";
 
     final MongoClient client;
-    final DBCollection collection;
+    final MongoCollection<Document> collection;
 
     public MongoSchemaDBStore(String uri) throws IOException {
-        this(new MongoClientURI(uri));
+        this(new ConnectionString(uri));
     }
 
-    public MongoSchemaDBStore(MongoClientURI uri) throws IOException {
-        client = new MongoClient(uri);
+    public MongoSchemaDBStore(ConnectionString uri) throws IOException {
+        client = MongoClients.create(uri);
 
         String databaseName = uri.getDatabase();
         if (databaseName == null) {
             databaseName = DEFAULT_databaseName;
         }
-        DB database = client.getDB(databaseName);
+        MongoDatabase database = client.getDatabase(databaseName);
 
         String collectionName = uri.getCollection();
         if (collectionName == null) {
             collectionName = DEFAULT_collectionName;
         }
         collection = database.getCollection(collectionName);
-        collection.createIndex(
-                new BasicDBObject(FeatureTypeDBObject.KEY_typeName, 1),
-                new BasicDBObject("unique", true));
+        BsonDocument bsonDoc=new BsonDocument();
+        bsonDoc.append(FeatureTypeDBObject.KEY_typeName,new BsonInt64( 1))
+                .append("unique", new BsonBoolean(true));
+        collection.createIndex(bsonDoc);
     }
 
     @Override
     public void storeSchema(SimpleFeatureType schema) throws IOException {
         if (schema != null) {
             String typeName = schema.getTypeName();
+            UpdateOptions options= new UpdateOptions();
+            options.upsert(true);
             if (typeName != null) {
-                collection.update(
-                        new BasicDBObject(FeatureTypeDBObject.KEY_typeName, schema.getTypeName()),
-                        FeatureTypeDBObject.convert(schema),
-                        true,
-                        false);
+                collection.updateOne(
+                        new BsonDocument(FeatureTypeDBObject.KEY_typeName, new BsonString(schema.getTypeName())),
+                         FeatureTypeDBObject.convert(schema),
+                        options);
             }
         }
     }
@@ -86,8 +101,8 @@ public class MongoSchemaDBStore implements MongoSchemaStore {
         if (typeName == null) {
             return null;
         }
-        DBObject document =
-                collection.findOne(new BasicDBObject(FeatureTypeDBObject.KEY_typeName, typeName));
+        Document document =
+                collection.find(new BsonDocument(FeatureTypeDBObject.KEY_typeName, new BsonString(typeName))).first();
         SimpleFeatureType featureType = null;
         if (document != null) {
             try {
@@ -108,18 +123,17 @@ public class MongoSchemaDBStore implements MongoSchemaStore {
         if (typeName == null) {
             return;
         }
-        collection.remove(new BasicDBObject(FeatureTypeDBObject.KEY_typeName, typeName));
+        collection.deleteOne(new BsonDocument(FeatureTypeDBObject.KEY_typeName, new BsonString(typeName)));
     }
 
     @Override
     public List<String> typeNames() {
-        try (DBCursor cursor =
-                collection.find(
-                        new BasicDBObject(),
-                        new BasicDBObject(FeatureTypeDBObject.KEY_typeName, 1))) {
-            List<String> typeNames = new ArrayList<>(cursor.count());
+        Bson projection=fields(include(FeatureTypeDBObject.KEY_typeName));
+        Long count=collection.countDocuments();
+        try (MongoCursor<Document> cursor=collection.find(projection).cursor()){
+            List<String> typeNames = new ArrayList<>(count.intValue());
             while (cursor.hasNext()) {
-                DBObject document = cursor.next();
+                Document document = cursor.next();
                 if (document != null) {
                     Object typeName = document.get(FeatureTypeDBObject.KEY_typeName);
                     if (typeName instanceof String) {
