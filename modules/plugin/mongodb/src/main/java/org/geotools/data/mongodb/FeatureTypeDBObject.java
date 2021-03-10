@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.bson.BsonDocument;
+import org.bson.BsonString;
 import org.bson.Document;
 import org.geotools.feature.AttributeTypeBuilder;
 import org.geotools.feature.simple.SimpleFeatureTypeBuilder;
@@ -73,7 +74,7 @@ public class FeatureTypeDBObject {
 
     public static BsonDocument convert(SimpleFeatureType ft) {
 
-        BasicDBObject ftDBO = new BasicDBObject(KEY_typeName, ft.getTypeName());
+        Document ftDBO = new Document(KEY_typeName, new BsonString(ft.getTypeName()));
         Map<String, String> ftUserData = typeCheck(ft.getUserData());
         if (!ftUserData.isEmpty()) {
             ftDBO.put(KEY_userData, new BasicDBObject(ftUserData));
