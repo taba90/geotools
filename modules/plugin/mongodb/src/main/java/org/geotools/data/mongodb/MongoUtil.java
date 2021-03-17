@@ -54,10 +54,12 @@ import java.util.logging.Logger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
 import java.util.zip.ZipFile;
+import org.geotools.data.DataUtilities;
 import org.geotools.data.mongodb.data.SchemaStoreDirectory;
 import org.geotools.http.HTTPClient;
 import org.opengis.feature.simple.SimpleFeatureType;
 import org.opengis.feature.type.Name;
+import org.opengis.filter.Filter;
 
 /** @author tkunicki@boundlessgeo.com */
 public class MongoUtil {
@@ -125,8 +127,12 @@ public class MongoUtil {
     }
 
     public static Set<String> findIndexedFields(DBCollection dbc, String type) {
-        Set<String> fields = new LinkedHashSet<>();
         List<DBObject> indices = dbc.getIndexInfo();
+        return findIndexedFields(indices, type);
+    }
+
+    public static Set<String> findIndexedFields(List<DBObject> indices, String type) {
+        Set<String> fields = new LinkedHashSet<>();
         for (DBObject index : indices) {
             Object key = index.get("key");
             if (key instanceof DBObject) {
@@ -373,4 +379,5 @@ public class MongoUtil {
             return lastDirectory;
         }
     }
+
 }
