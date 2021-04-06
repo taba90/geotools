@@ -18,7 +18,9 @@ package org.geotools.styling;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.geotools.factory.CommonFactoryFinder;
 import org.geotools.filter.visitor.DuplicatingFilterVisitor;
 import org.geotools.util.Utilities;
@@ -47,6 +49,8 @@ public class RuleImpl implements org.geotools.styling.Rule, Cloneable {
     private double maxScaleDenominator = Double.POSITIVE_INFINITY;
     private double minScaleDenominator = 0.0;
     private OnLineResource online = null;
+
+    protected Map<String, String> options;
 
     /** Creates a new instance of DefaultRule */
     protected RuleImpl() {}
@@ -279,6 +283,10 @@ public class RuleImpl implements org.geotools.styling.Rule, Cloneable {
             result = (PRIME * result) + filter.hashCode();
         }
 
+        if (options != null) {
+            result = (PRIME * result) + options.hashCode();
+        }
+
         result = (PRIME * result) + (hasElseFilter ? 1 : 0);
 
         long temp = Double.doubleToLongBits(maxScaleDenominator);
@@ -320,7 +328,8 @@ public class RuleImpl implements org.geotools.styling.Rule, Cloneable {
                     && (Double.doubleToLongBits(maxScaleDenominator)
                             == Double.doubleToLongBits(other.maxScaleDenominator))
                     && (Double.doubleToLongBits(minScaleDenominator)
-                            == Double.doubleToLongBits(other.minScaleDenominator));
+                            == Double.doubleToLongBits(other.minScaleDenominator))
+                    && options.equals(other.options);
         }
 
         return false;
@@ -336,6 +345,7 @@ public class RuleImpl implements org.geotools.styling.Rule, Cloneable {
         }
         buf.append("> ");
         buf.append(filter);
+        buf.append(options);
         if (symbolizers != null) {
             buf.append("\n");
             for (Symbolizer symbolizer : symbolizers) {
@@ -355,6 +365,19 @@ public class RuleImpl implements org.geotools.styling.Rule, Cloneable {
     @Override
     public void setOnlineResource(OnLineResource online) {
         this.online = online;
+    }
+
+    @Override
+    public boolean hasOption(String key) {
+        return options != null && options.containsKey(key);
+    }
+
+    @Override
+    public Map<String, String> getOptions() {
+        if (options == null) {
+            options = new LinkedHashMap<>();
+        }
+        return options;
     }
 
     static RuleImpl cast(Rule rule) {
