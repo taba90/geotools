@@ -33,6 +33,8 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
+
 import org.geotools.data.FeatureReader;
 import org.geotools.data.Query;
 import org.geotools.data.Transaction;
@@ -1331,9 +1333,12 @@ public class JoiningJDBCFeatureSource extends JDBCFeatureSource {
                 encodeColumnName(finalSql, mv.getTargetTable(), primaryKey.getName());
                 finalSql.append(", ");
             }
+            List<String> primaryKeysString=primaryKeys.getColumns().stream().map(c->c.getName()).collect(Collectors.toList());
             for (String property : mv.getProperties()) {
-                encodeColumnName(finalSql, mv.getTargetTable(), property);
-                finalSql.append(", ");
+                if (!primaryKeysString.contains(property)) {
+                    encodeColumnName(finalSql, mv.getTargetTable(), property);
+                    finalSql.append(", ");
+                }
             }
             finalSql.delete(finalSql.length() - 2, finalSql.length());
             // encode value expression
